@@ -1,0 +1,167 @@
+'use client';
+
+import Link from 'next/link';
+import { KpiStrip, Page, PageHead, cn, type KpiItem } from '@erp/ui';
+import { FolderOpen, LockKeyhole } from 'lucide-react';
+import type { ReactNode } from 'react';
+
+import { findScreenByHref } from '../lib/navigation';
+
+/**
+ * إطار الشاشة — صار من `@erp/ui` كي تتشاركه كل الأسطح.
+ *
+ * الشاشات هنا تُركَّب على `Page` + `PageHead`: مسار، ثم عنوان، ثم شرح، ثم
+ * إجراءات — بمسافاتٍ واحدة مهما كانت الشاشة. من احتاج ترتيباً مختلفاً رتّب
+ * الأقسام داخل الإطار، ولم يغيّر الإطار.
+ */
+export function Screen({
+  title,
+  subtitle,
+  crumbs,
+  actions,
+  kpis,
+  filters,
+  chips,
+  meta,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  crumbs?: string[];
+  actions?: ReactNode;
+  /** شريط المؤشرات — سطرٌ واحد فوق التصفية، لا بطاقاتٌ عائمة. */
+  kpis?: KpiItem[];
+  /** شريط التصفية الموحّد (`ui-filter-bar`). */
+  filters?: ReactNode;
+  /** صفّ حالات/شرائح (`ui-chip-row`) تحت التصفية. */
+  chips?: ReactNode;
+  /** سياق صغير في رأس الصفحة (الفترة، الفرع، الحالة). */
+  meta?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Page>
+      <PageHead title={title} description={subtitle} breadcrumbs={crumbs} actions={actions} meta={meta} />
+      <div className="ui-screen-body">
+        {kpis && kpis.length > 0 ? <KpiStrip items={kpis} /> : null}
+        {filters}
+        {chips}
+        {children}
+      </div>
+    </Page>
+  );
+}
+
+export function Loading({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="rounded-xl border border-line bg-surface p-4 shadow-1 grid gap-3" aria-busy="true">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className="h-4 rounded-md bg-surface-3 animate-pulse"
+          style={{ width: `${100 - index * 8}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function ErrorBox({ message, onRetry }: { message?: string; onRetry?: () => void }) {
+  return (
+    <div className="rounded-xl border border-line bg-surface p-4 shadow-1 grid gap-3">
+      <p className="m-0 flex items-center gap-2 rounded-xl border border-danger-line bg-danger-soft px-4 py-2.5 text-[13px] font-semibold text-danger-ink">
+        تعذر تحميل البيانات: {message ?? 'خطأ غير معروف'}
+      </p>
+      {onRetry ? (
+        <button
+          className="h-10 px-4 rounded-[10px] bg-brand-600 text-on-accent text-[13.5px] font-bold hover:bg-brand-700 transition-colors duration-150"
+          type="button"
+          onClick={onRetry}
+          style={{ justifyContent: 'flex-start' }}
+        >
+          إعادة المحاولة
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function Forbidden() {
+  return (
+    <div className="ui-empty rounded-xl border border-line bg-surface p-8 shadow-1 grid place-items-center text-center gap-2">
+      <span className="grid place-items-center size-12 rounded-2xl bg-warn-soft text-warn">
+        <LockKeyhole size={22} strokeWidth={1.7} aria-hidden />
+      </span>
+      <p className="m-0 text-[15px] font-bold text-ink">لا تملك صلاحية الوصول</p>
+      <p className="m-0 text-[13px] text-muted max-w-md">
+        اطلب من مالك الحساب منحك الصلاحية المطلوبة من «صلاحيات المستخدمين».
+      </p>
+    </div>
+  );
+}
+
+/**
+ * حالة الفراغ.
+ *
+ * `bare` لفراغٍ يسكن بطاقةً أو لوحةً: البطاقة نفسها هي السطح، فلا نضع بطاقةً
+ * داخل بطاقة — يبقى الرسمُ والنصّ ويذهب الإطار والظل.
+ */
+export function Empty({
+  title,
+  detail,
+  action,
+  bare = false,
+}: {
+  title: string;
+  detail?: string;
+  /** A way out of the empty state — «أضف الأول» أو «افتح الشاشة». */
+  action?: ReactNode;
+  bare?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'ui-empty grid place-items-center text-center gap-2',
+        bare
+          ? 'border-0 bg-transparent shadow-none p-6'
+          : 'rounded-xl border border-line bg-surface p-8 shadow-1',
+      )}
+    >
+      <span className="grid place-items-center size-12 rounded-2xl bg-surface-3 text-muted">
+        <FolderOpen size={22} strokeWidth={1.7} aria-hidden />
+      </span>
+      <p className="m-0 text-[15px] font-bold text-ink">{title}</p>
+      {detail ? <p className="m-0 text-[13px] text-muted max-w-md">{detail}</p> : null}
+      {action ? <div className="mt-1">{action}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * A route that exists in the menu tree but has no screen behind it yet.
+ *
+ * Production rule: it renders a plain, customer-facing "not available" state —
+ * no API path, no permission code, no roadmap wording, no «قيد التطوير». Those
+ * belong in the repository, not in front of an accountant. In development the
+ * same state is kept; the engineering detail is available in the code and in
+ * `docs/ui-v5/SCREENS.md` instead.
+ */
+export function ScreenScaffold({ href }: { href: string }) {
+  const item = findScreenByHref(href);
+  return (
+    <Screen
+      title={item?.labelAr ?? 'صفحة غير متاحة'}
+      crumbs={item ? [item.moduleLabelAr, item.groupLabelAr] : undefined}
+    >
+      <Empty
+        title="هذه الصفحة غير متاحة في نسختك"
+        detail="إن وصلت إلى هنا من رابط قديم، فارجع إلى القائمة الجانبية أو تواصل مع مسؤول الحساب لتفعيل الوحدة."
+        action={
+          <Link className="btn" href="/">
+            العودة إلى الرئيسية
+          </Link>
+        }
+      />
+    </Screen>
+  );
+}

@@ -1,0 +1,431 @@
+'use client';
+
+import { useState } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
+import { Panel } from '@erp/ui';
+
+import { Empty, ErrorBox, Forbidden, Loading, Screen } from '../../../components/screen';
+import { apiDelete, apiErrorText, apiList, apiPatch, apiPost } from '../../../lib/api';
+import { branchOptions, listBranches, type Branch } from '../../../lib/lookups';
+import { useSession } from '../../../lib/session';
+import { useQuery } from '../../../lib/use-query';
+import { Table } from '../../../components/ui/table';
+
+/**
+ * الإدارات والأقسام — `Form_WPF/frmManagement.xaml` («الإدارات») and
+ * `Form_WPF/frmDepartments.xaml` («إدخال بيانات الإدارات والأقسام»).
+ *
+ * The two windows are one parent/child pair: `Managements(id, name)` above
+ * `Departments(id, manag_id, name)`, and `frmDepartments.xaml.cs` joins them for its grid
+ * (`SELECT d.id, m.id, m.name AS manag, d.name AS dep FROM Departments d INNER JOIN
+ * Managements m ON d.manag_id = m.id`) — «اسم الإدارة التابع لها» beside every قسم.
+ *
+ * Saving a department refuses an empty name («يجب إدخال اسم القسم») and an empty إدارة
+ * («يجب اختيار إدارة أولاً»); both sentences come back from the API unchanged. Deleting
+ * an إدارة that still has أقسام is refused too — the desktop deletes the row and leaves
+ * its departments pointing at a management that no longer exists.
+ */
+type Department = {
+  id: string;
+  code: string;
+  name: string;
+  branchId?: string | null;
+  parentId?: string | null;
+  kind?: 'management' | 'section';
+  parentName?: string | null;
+  employeeCount?: number;
+  sectionCount?: number;
+};
+
+const BLANK = { id: '', code: '', name: '', branchId: '', parentId: '' };
+
+export default function DepartmentsPage() {
+  const { can } = useSession();
+  const [managementForm, setManagementForm] = useState({ ...BLANK });
+  const [sectionForm, setSectionForm] = useState({ ...BLANK });
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ kind: 'ok' | 'danger'; text: string } | undefined>();
+
+  const departments = useQuery<Department[]>(() => apiList<Department>('/hrm/departments'), []);
+  const branches = useQuery<Branch[]>(() => listBranches(), []);
+
+  const rows = departments.data ?? [];
+  const managements = rows.filter((row) => row.kind === 'management');
+  const sections = rows.filter((row) => row.kind === 'section');
+  const canManage = can('hrm.manage');
+
+  const fail = (error: unknown) => {
+    setMessage({
+      kind: 'danger',
+      text: apiErrorText(error),
+    });
+  };
+
+  /** `frmManagement.xaml.cs` L120 — insert/update `Managements(name)`; the الرقم is the id. */
+  const saveManagement = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setMessage(undefined);
+    const body = {
+      code: managementForm.code.trim(),
+      name: managementForm.name.trim(),
+      branchId: managementForm.branchId || null,
+    };
+    try {
+      if (managementForm.id) await apiPatch(`/hrm/departments/${managementForm.id}`, body);
+      else await apiPost('/hrm/departments', body);
+      setMessage({ kind: 'ok', text: 'تم الحفظ بنجاح' });
+      setManagementForm({ ...BLANK });
+      departments.reload();
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** `frmDepartments.xaml.cs` L120 — a قسم is always saved under an إدارة. */
+  const saveSection = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setMessage(undefined);
+    const body = {
+      code: sectionForm.code.trim(),
+      name: sectionForm.name.trim(),
+      branchId: sectionForm.branchId || null,
+      parentId: sectionForm.parentId || null,
+    };
+    try {
+      if (sectionForm.id) await apiPatch(`/hrm/departments/${sectionForm.id}`, body);
+      else await apiPost('/hrm/departments', body);
+      setMessage({ kind: 'ok', text: 'تم الحفظ بنجاح' });
+      setSectionForm({ ...BLANK });
+      departments.reload();
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (row: Department) => {
+    if (
+      !window.confirm(
+        `هل أنت متأكد من حذف ${row.kind === 'section' ? 'هذا القسم' : 'هذه الإدارة'}؟ — ${row.name}`,
+      )
+    )
+      return;
+    setBusy(true);
+    setMessage(undefined);
+    try {
+      await apiDelete(`/hrm/departments/${row.id}`);
+      setMessage({ kind: 'ok', text: 'تم الحذف بنجاح' });
+      if (managementForm.id === row.id) setManagementForm({ ...BLANK });
+      if (sectionForm.id === row.id) setSectionForm({ ...BLANK });
+      departments.reload();
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const branchField = (value: string, onChange: (next: string) => void) => (
+    <label className="field">
+      <span>الفرع</span>
+      <select className="input" value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">كل الفروع</option>
+        {branchOptions(branches.data ?? []).map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  return (
+    <Screen
+      title="الإدارات والأقسام"
+      subtitle={`${managements.length} إدارة · ${sections.length} قسم`}
+      crumbs={['الموظفين والرواتب', 'التعاريف']}
+      actions={
+        <button
+          className="btn"
+          type="button"
+          onClick={departments.reload}
+          disabled={departments.status === 'loading'}
+        >
+          تحديث
+        </button>
+      }
+    >
+      {message && <p className={`alert ${message.kind}`}>{message.text}</p>}
+
+      {departments.status === 'loading' && <Loading rows={3} />}
+      {departments.status === 'forbidden' && <Forbidden />}
+      {departments.status === 'error' && (
+        <ErrorBox message={departments.error} onRetry={departments.reload} />
+      )}
+
+      {departments.status === 'success' && canManage && (
+        <Panel title="الإدارات" flush>
+          <form className="form-grid" onSubmit={saveManagement}>
+            <label className="field">
+              <span>الرقم *</span>
+              <input
+                className="input"
+                dir="ltr"
+                value={managementForm.code}
+                onChange={(event) => setManagementForm({ ...managementForm, code: event.target.value })}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>اسم الإدارة *</span>
+              <input
+                className="input"
+                value={managementForm.name}
+                onChange={(event) => setManagementForm({ ...managementForm, name: event.target.value })}
+                required
+              />
+            </label>
+            {branchField(managementForm.branchId, (next) =>
+              setManagementForm({ ...managementForm, branchId: next }),
+            )}
+            <div className="toolbar">
+              <button className="btn primary" type="submit" disabled={busy}>
+                {managementForm.id ? 'تعديل' : 'إضافة إدارة جديدة'}
+              </button>
+              {managementForm.id && (
+                <button className="btn" type="button" onClick={() => setManagementForm({ ...BLANK })}>
+                  جديد
+                </button>
+              )}
+            </div>
+          </form>
+
+          {managements.length === 0 ? (
+            <Empty title="لا توجد إدارات" detail="الإدارة هي المستوى الأعلى الذي تُبنى عليه الأقسام." />
+          ) : (
+            <Table
+              bare
+              columns={[
+                {
+                  key: 'c0',
+                  header: 'الرقم',
+                  ltr: true,
+                  cell: (row) => row.code,
+                },
+                {
+                  key: 'c1',
+                  header: 'اسم الإدارة',
+                  cell: (row) => row.name,
+                },
+                {
+                  key: 'c2',
+                  header: 'الأقسام',
+                  ltr: true,
+                  cell: (row) => row.sectionCount ?? 0,
+                },
+                {
+                  key: 'c3',
+                  header: 'الموظفون',
+                  ltr: true,
+                  cell: (row) => row.employeeCount ?? 0,
+                },
+                {
+                  key: 'c4',
+                  header: '',
+                  cell: (row) => (
+                    <>
+                      <button
+                        className="btn small"
+                        type="button"
+                        onClick={() =>
+                          setManagementForm({
+                            id: row.id,
+                            code: row.code,
+                            name: row.name,
+                            branchId: row.branchId ?? '',
+                            parentId: '',
+                          })
+                        }
+                      >
+                        <Pencil size={13} />
+                      </button>{' '}
+                      <button
+                        className="btn small danger"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void remove(row)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  ),
+                },
+              ]}
+              rows={managements}
+              rowKey={(row) => row.id}
+            />
+          )}
+        </Panel>
+      )}
+
+      {departments.status === 'success' && canManage && (
+        <Panel title="الأقسام" flush>
+          <form className="form-grid" onSubmit={saveSection}>
+            <label className="field">
+              <span>الرقم *</span>
+              <input
+                className="input"
+                dir="ltr"
+                value={sectionForm.code}
+                onChange={(event) => setSectionForm({ ...sectionForm, code: event.target.value })}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>اسم القسم *</span>
+              <input
+                className="input"
+                value={sectionForm.name}
+                onChange={(event) => setSectionForm({ ...sectionForm, name: event.target.value })}
+                required
+              />
+            </label>
+            <label className="field">
+              <span>اسم الإدارة التابع لها *</span>
+              <select
+                className="input"
+                value={sectionForm.parentId}
+                onChange={(event) => setSectionForm({ ...sectionForm, parentId: event.target.value })}
+                required
+              >
+                <option value="">اختر الإدارة...</option>
+                {managements.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {branchField(sectionForm.branchId, (next) => setSectionForm({ ...sectionForm, branchId: next }))}
+            <div className="toolbar">
+              <button className="btn primary" type="submit" disabled={busy}>
+                {sectionForm.id ? 'تعديل' : 'حفظ'}
+              </button>
+              {sectionForm.id && (
+                <button className="btn" type="button" onClick={() => setSectionForm({ ...BLANK })}>
+                  جديد
+                </button>
+              )}
+            </div>
+          </form>
+
+          {sections.length === 0 ? (
+            <Empty title="لا توجد أقسام" detail="القسم يُضاف تحت إدارة قائمة." />
+          ) : (
+            <Table
+              bare
+              columns={[
+                {
+                  key: 'c0',
+                  header: 'الرقم',
+                  ltr: true,
+                  cell: (row) => row.code,
+                },
+                {
+                  key: 'c1',
+                  header: 'اسم القسم',
+                  cell: (row) => row.name,
+                },
+                {
+                  key: 'c2',
+                  header: 'اسم الإدارة التابع لها',
+                  cell: (row) => row.parentName ?? '—',
+                },
+                {
+                  key: 'c3',
+                  header: 'الموظفون',
+                  ltr: true,
+                  cell: (row) => row.employeeCount ?? 0,
+                },
+                {
+                  key: 'c4',
+                  header: '',
+                  cell: (row) => (
+                    <>
+                      <button
+                        className="btn small"
+                        type="button"
+                        onClick={() =>
+                          setSectionForm({
+                            id: row.id,
+                            code: row.code,
+                            name: row.name,
+                            branchId: row.branchId ?? '',
+                            parentId: row.parentId ?? '',
+                          })
+                        }
+                      ></button>{' '}
+                      <button
+                        className="btn small danger"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void remove(row)}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  ),
+                },
+              ]}
+              rows={sections}
+              rowKey={(row) => row.id}
+            />
+          )}
+        </Panel>
+      )}
+
+      {departments.status === 'success' && !canManage && (
+        <Panel title="الإدارات والأقسام" flush>
+          {rows.length === 0 ? (
+            <Empty bare title="لا توجد إدارات أو أقسام" detail="أنشئ إدارة لتبدأ هيكل الأقسام." />
+          ) : (
+            <Table
+              bare
+              columns={[
+                {
+                  key: 'c0',
+                  header: 'الرقم',
+                  ltr: true,
+                  cell: (row) => row.code,
+                },
+                {
+                  key: 'c1',
+                  header: 'الاسم',
+                  cell: (row) => row.name,
+                },
+                {
+                  key: 'c2',
+                  header: 'اسم الإدارة التابع لها',
+                  cell: (row) => row.parentName ?? (row.kind === 'management' ? '— إدارة —' : '—'),
+                },
+                {
+                  key: 'c3',
+                  header: 'الموظفون',
+                  ltr: true,
+                  cell: (row) => row.employeeCount ?? 0,
+                },
+              ]}
+              rows={rows}
+              rowKey={(row) => row.id}
+            />
+          )}
+        </Panel>
+      )}
+    </Screen>
+  );
+}
