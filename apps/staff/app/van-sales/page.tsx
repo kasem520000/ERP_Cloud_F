@@ -3070,12 +3070,12 @@ export default function VanSalesPage() {
                      * هو ما يجعل الرسالة قابلةً للتنفيذ: الأولى تعني «أدخل الرقم في بيانات
                      * المنشأة»، والثانية تعني «الرقم المُدخل ليس رقمًا ضريبيًّا صالحًا».
                      */}
-                    {data.policy.zatcaSeller.missingFields.length > 0 ? (
+                    {(data.policy.zatcaSeller.missingFields ?? []).length > 0 ? (
                       <div>
                         الناقص في بيانات المنشأة: {data.policy.zatcaSeller.missingFields.join(' · ')}
                       </div>
                     ) : null}
-                    {data.policy.zatcaSeller.invalidFields.length > 0 ? (
+                    {(data.policy.zatcaSeller.invalidFields ?? []).length > 0 ? (
                       <div>
                         لا يطابق صيغة الهيئة (١٥ رقمًا تبدأ وتنتهي بـ٣):{' '}
                         {data.policy.zatcaSeller.invalidFields.join(' · ')}

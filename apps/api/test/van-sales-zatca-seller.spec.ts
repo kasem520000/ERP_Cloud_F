@@ -312,10 +312,18 @@ describe('a ZATCA van document carries the tenant’s real seller identity, or i
     });
     expect(dashboard.status, JSON.stringify(dashboard.body).slice(0, 300)).toBe(200);
     const dashboardSeller = (dashboard.body.data as {
-      policy: { zatcaSeller: { ready: boolean; refusalDetail: string | null } };
+      policy: {
+        zatcaSeller: { ready: boolean; missingFields: string[]; invalidFields: string[]; refusalDetail: string | null };
+      };
     }).policy.zatcaSeller;
     expect(dashboardSeller.ready).toBe(false);
     expect(dashboardSeller.refusalDetail).toBe(detail);
+    /**
+     * 🧾 واللوحةُ تحمل الحقلين معًا — DEF-R7-007 (م2). غيابُ `invalidFields` منها كان يُسقط
+     * شاشةَ فواتير التوزيع عند القراءة (`undefined.length`)، وهو ما التقطته لقطةُ الشاشة.
+     */
+    expect(Array.isArray(dashboardSeller.missingFields)).toBe(true);
+    expect(Array.isArray(dashboardSeller.invalidFields)).toBe(true);
   });
 
   it('التسليمُ الداخليّ لا يُرفض بسبب الرقم، ولا يحمل حمولةً برقمٍ لجهةٍ أخرى', async () => {

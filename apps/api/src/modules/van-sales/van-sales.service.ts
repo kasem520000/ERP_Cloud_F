@@ -1837,6 +1837,8 @@ export class VanSalesService {
           zatcaSeller: {
             ready: dashboardSeller.refusalAr === null,
             missingFields: dashboardSeller.missingFields,
+            /** 🧾 و«لا يطابق الصيغة» منفصلٌ عن «غير مُدخل» — DEF-R7-007 (م2). */
+            invalidFields: dashboardSeller.invalidFields,
             refusalDetail: dashboardSeller.refusalAr,
           },
         },
