@@ -55,6 +55,8 @@
 **الاختبارات:** `apps/api` `van-sales-zatca-seller` **7/7** · `packages/web-van` **95/95** (منها
 `document-print` 22/22) · `apps/staff` `tsc` نظيف.
 **الدليل الحيّ:** `evidence/30-r8/m2-measure.json` (قراءةُ السياسة على منشأة التدقيق — بلا كتابة).
+**الثوابت بعد م2:** `evidence/30-r8/m2-invariants-after.json` — **20/20 مطبَّقاً، 0 فشل** (لم تتغيّر
+أرقام الدفتر: م2 لم يكتب مستندًا ولا قيدًا على بيانات التدقيق).
 التفاصيل: [DEFECTS.md](DEFECTS.md) بطاقة DEF-R7-007 · [TEST_RESULTS.md](TEST_RESULTS.md) قسم م2.
 
 ## 0.1 الجولة السابعة — دورة مخبز كاملة بكتابة مالية حقيقية
