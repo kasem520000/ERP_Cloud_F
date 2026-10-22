@@ -1,0 +1,62 @@
+{
+  "login": 200,
+  "item": {
+    "status": 201,
+    "id": "01a1622c-5c62-73cf-9cd6-a695b43f004e"
+  },
+  "customer": {
+    "status": 201,
+    "id": "01a1622c-5f77-722e-9190-9e35f929bffe",
+    "receivableAccountId": "01a1622c-5f7b-72db-8f51-274d74227d72"
+  },
+  "supplier": {
+    "status": 201,
+    "id": "01a1622c-628b-70ce-ac77-2013ca489d41",
+    "payableAccountId": "01a1622c-628f-76d6-97df-3cb75436e465"
+  },
+  "branchId": "01a1622a-5189-72cf-a27f-802add5360f8",
+  "warehouseId": "01a1622a-518a-771e-91ed-0599d7d5b94b",
+  "sale": {
+    "create": 201,
+    "post": 201,
+    "number": "SI-000003",
+    "total": "115.0000"
+  },
+  "customerBalance": {
+    "status": 200,
+    "receivable": "115.0000",
+    "payable": "0.0000"
+  },
+  "cashLocationId": "01a1622a-518c-7163-af65-a17d376afbe2",
+  "receipt": {
+    "create": 201,
+    "post": 201
+  },
+  "customerBalanceAfterReceipt": {
+    "receivable": "65.0000",
+    "payable": "0.0000"
+  },
+  "purchase": {
+    "create": 201,
+    "post": 201,
+    "number": "PI-000002",
+    "total": "138.0000"
+  },
+  "supplierBalance": {
+    "status": 200,
+    "receivable": "0.0000",
+    "payable": "138.0000"
+  },
+  "generalParties": [
+    {
+      "code": "SUPP-GEN",
+      "ar": null,
+      "ap": null
+    },
+    {
+      "code": "CUST-GEN",
+      "ar": null,
+      "ap": null
+    }
+  ]
+}

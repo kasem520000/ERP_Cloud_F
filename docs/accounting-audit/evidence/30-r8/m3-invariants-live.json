@@ -1,0 +1,180 @@
+{
+  "at": "2026-10-22T05:54:30.997Z",
+  "api": "http://127.0.0.1:3200/api/v1",
+  "tenantId": "01a1622a-4fe0-724a-80d9-a794be3657c6",
+  "totals": {
+    "checks": 21,
+    "passed": 20,
+    "failed": 1
+  },
+  "results": [
+    {
+      "id": "GL-BALANCED",
+      "title": "مجموع مدين الأستاذ = مجموع دائنه",
+      "expected": "250801.0000",
+      "actual": "250801.0000",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "INVENTORY-VS-GL",
+      "title": "قيمة المخزون = رصيد 1270001",
+      "expected": "4160.0000",
+      "actual": "160.0000",
+      "pass": false,
+      "note": ""
+    },
+    {
+      "id": "AR-AGING-VS-GL",
+      "title": "إجمالي أعمار الذمم المدينة = رصيد 12310001",
+      "expected": "245.0000",
+      "actual": "245.00",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "PARTY-STATEMENT-01a1622b",
+      "title": "رصيد كشف العميل = ذمته في حساب الذمم",
+      "expected": "115.0000",
+      "actual": "115.0000",
+      "pass": true,
+      "note": "مدين 115.00 / دائن 0.00"
+    },
+    {
+      "id": "PARTY-STATEMENT-01a1622b",
+      "title": "رصيد كشف العميل = ذمته في حساب الذمم",
+      "expected": "-138.0000",
+      "actual": "-138.0000",
+      "pass": true,
+      "note": "مدين 0.00 / دائن 138.00"
+    },
+    {
+      "id": "PARTY-STATEMENT-01a1622c",
+      "title": "رصيد كشف العميل = ذمته في حساب الذمم",
+      "expected": "65.0000",
+      "actual": "65.0000",
+      "pass": true,
+      "note": "مدين 115.00 / دائن 50.00"
+    },
+    {
+      "id": "PARTY-STATEMENT-01a1622c",
+      "title": "رصيد كشف العميل = ذمته في حساب الذمم",
+      "expected": "65.0000",
+      "actual": "65.0000",
+      "pass": true,
+      "note": "مدين 115.00 / دائن 50.00"
+    },
+    {
+      "id": "PARTY-STATEMENT-01a1622c",
+      "title": "رصيد كشف العميل = ذمته في حساب الذمم",
+      "expected": "-138.0000",
+      "actual": "-138.0000",
+      "pass": true,
+      "note": "مدين 0.00 / دائن 138.00"
+    },
+    {
+      "id": "PL-SIGN",
+      "title": "صافي الربح = الإيرادات − |إجمالي المصروفات|",
+      "expected": "220.00",
+      "actual": "220.00",
+      "pass": true,
+      "note": "إيرادات 300 · مصروفات معروضة 80"
+    },
+    {
+      "id": "INVOICE-PROFIT-SI-000003",
+      "title": "تكلفة الفاتورة في التقرير = تكلفة المبيعات المرحّلة لها",
+      "expected": "40.0000",
+      "actual": "40.0000",
+      "pass": true,
+      "note": "صافي 100.0000 · ربح التقرير 60.0000"
+    },
+    {
+      "id": "INVOICE-HEADER-SI-000003",
+      "title": "cost_total في الترويسة = مجموع أسطر الفاتورة",
+      "expected": "40.0000",
+      "actual": "40.0000",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "INVOICE-PROFIT-CALC-SI-000003",
+      "title": "ربح الفاتورة = الصافي − التكلفة",
+      "expected": "60.00",
+      "actual": "60.00",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "CASH-STATEMENT-ALL",
+      "title": "كشف الصندوق بلا صندوق («الكل») = حركة كل حسابات النقد",
+      "expected": "230100.00",
+      "actual": "230100.00",
+      "pass": true,
+      "note": "صادر متوقع 0.00 · صادر التقرير 0.00"
+    },
+    {
+      "id": "CASH-STATEMENT-1211001",
+      "title": "كشف «الصندوق الرئيسي» = حركة حسابه",
+      "expected": "50100.00",
+      "actual": "50100.00",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "CASH-STATEMENT-1221001",
+      "title": "كشف «الحساب البنكي الرئيسي» = حركة حسابه",
+      "expected": "180000.00",
+      "actual": "180000.00",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "CASH-MOVEMENT-VS-STATEMENT",
+      "title": "قبض «حركة الصندوق» = وارد «كشف الصندوق» لكل الصناديق",
+      "expected": "230100.00",
+      "actual": "230100.00",
+      "pass": true,
+      "note": "حركة الصندوق 2 صف"
+    },
+    {
+      "id": "VAT-VS-GL",
+      "title": "صافي الإقرار = رصيد حساب الضريبة",
+      "expected": "9.0000",
+      "actual": "9.00",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "CASH-BALANCE-API-1211001",
+      "title": "رصيد موقع «الصندوق الرئيسي» الذي يقدّمه الـAPI = حركة حسابه",
+      "expected": "50100.00",
+      "actual": "50100.00",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "CASH-BALANCE-API-1221001",
+      "title": "رصيد موقع «الحساب البنكي الرئيسي» الذي يقدّمه الـAPI = حركة حسابه",
+      "expected": "180000.00",
+      "actual": "180000.00",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "AUDIT-TRAIL-POSTED-BY",
+      "title": "كل قيد من JE-000007 يحمل posted_by",
+      "expected": "0 قيد بلا مُرحِّل",
+      "actual": "0 من 2",
+      "pass": true,
+      "note": "بقايا تاريخية 1 قيداً بلا مُرحِّل (لا تُخترع)"
+    },
+    {
+      "id": "AP-AGING-VS-GL",
+      "title": "إجمالي أعمار الذمم الدائنة = رصيد 22111001",
+      "expected": "276.0000",
+      "actual": "276.00",
+      "pass": true,
+      "note": ""
+    }
+  ]
+}
