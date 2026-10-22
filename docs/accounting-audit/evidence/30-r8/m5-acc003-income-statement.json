@@ -1,0 +1,51 @@
+{
+  "measuredAt": "2026-10-22T06:19:47.472Z",
+  "fix": "ACC-003",
+  "default(perpetual)": {
+    "status": 200,
+    "totals": {
+      "debit": "5100.0000",
+      "credit": "5100.0000",
+      "stock": "5800.0000",
+      "stockInProfit": false,
+      "profit": "4780.0000",
+      "profitLabel": "صافي أرباح العام",
+      "balanced": true,
+      "balancedLabel": "✅ الحسابات متوازنة"
+    },
+    "stockRow": {
+      "informational": true,
+      "credit": "5800.0000"
+    }
+  },
+  "periodic_optin": {
+    "status": 200,
+    "totals": {
+      "debit": "10900.0000",
+      "credit": "10900.0000",
+      "stock": "5800.0000",
+      "stockInProfit": true,
+      "profit": "10580.0000",
+      "profitLabel": "صافي أرباح العام",
+      "balanced": true,
+      "balancedLabel": "✅ الحسابات متوازنة"
+    },
+    "stockRow": {
+      "credit": "5800.0000"
+    }
+  },
+  "no_stock": {
+    "status": 200,
+    "totals": {
+      "debit": "5100.0000",
+      "credit": "5100.0000",
+      "stock": "0.0000",
+      "stockInProfit": false,
+      "profit": "4780.0000",
+      "profitLabel": "صافي أرباح العام",
+      "balanced": true,
+      "balancedLabel": "✅ الحسابات متوازنة"
+    },
+    "stockRow": null
+  }
+}

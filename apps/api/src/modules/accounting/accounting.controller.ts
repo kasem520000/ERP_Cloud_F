@@ -200,6 +200,8 @@ export class AccountingController {
     @Query('branch_id') branchId?: string,
     @Query('summary') summary?: string,
     @Query('with_stock') withStock?: string,
+    /** 🧾 ACC-003 — `stock_in_profit=1` restores the desktop's periodic plug; see the service. */
+    @Query('stock_in_profit') stockInProfit?: string,
   ) {
     const statement = await this.accounting.incomeStatement(getTenantContext().tenantId, {
       from,
@@ -207,6 +209,7 @@ export class AccountingController {
       branchId,
       summary: summary === undefined ? undefined : on(summary),
       withStock: withStock === undefined ? undefined : on(withStock),
+      stockInProfit: stockInProfit === undefined ? undefined : on(stockInProfit),
     });
     return { data: statement.rows, totals: statement.totals };
   }

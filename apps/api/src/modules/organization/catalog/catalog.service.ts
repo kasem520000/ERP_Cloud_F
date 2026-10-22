@@ -20,6 +20,7 @@ import {
 import { DATABASE_HANDLE } from '../../../database/database.module.js';
 import { CustomFieldsService } from '../../custom-fields/custom-fields.service.js';
 import { UsageService } from '../../usage/index.js';
+import { isUniqueViolation } from '../shared/org-support.js';
 
 /** One line of a bill of materials. `ratio` is base units per one of `unitId`. */
 export type ItemComponentRow = {
@@ -699,20 +700,49 @@ export class CatalogService {
   }
 
   /**
+   * 🧾 رمزٌ مكرَّر في دليل (مجموعة/وحدة/مجموعة ضريبية) — **FUN-001**.
+   *
+   * كان التكرار يصل إلى فهرس `UNIQUE` فيخرج خطأ Postgres `23505` بلا معالج، فيُترجم إلى
+   * **500 INTERNAL**: المستخدم يرى «عطل في الخادم» بينما هو أرسل رمزاً موجوداً، ويظنّ أن
+   * السجل لم يُحفظ فيعيد المحاولة بلا نهاية. والقيد نفسه صحيح — الناقص هو الترجمة.
+   *
+   * والترجمة هنا **409** لا 422: الطلب صحيح الشكل، والتعارض مع حالةٍ قائمة (نفس الرمز
+   * موجودٌ في المنشأة) — وهو ما يميّزه عن «حقلٌ ناقص». والخطأ يسمّي الحقل `code` ليُعرض
+   * بجانبه في الشاشة كما تُعرض أخطاء النماذج.
+   */
+  private async insertUnique<T>(code: string, work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new DomainError(
+          'CATALOG_CODE_DUPLICATE',
+          `الرمز «${code}» مستخدم مسبقاً في هذا الدليل — اختر رمزاً آخر`,
+          409,
+          { field: 'code' },
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
    * An item cannot exist without a category and a base unit, so the two directories
    * below are part of the same module: without them `POST items` is unusable from a UI.
    */
   async createCategory(tenantId: string, input: CategoryInput) {
     const id = newId();
-    await withTenantTx(this.database.db, tenantId, (tx) =>
-      tx.insert(itemCategories).values({
-        id,
-        tenantId,
-        code: input.code,
-        nameAr: input.nameAr,
-        nameEn: input.nameEn,
-        parentId: input.parentId,
-      }),
+    await this.insertUnique(input.code, () =>
+      withTenantTx(this.database.db, tenantId, (tx) =>
+        tx.insert(itemCategories).values({
+          id,
+          tenantId,
+          code: input.code,
+          nameAr: input.nameAr,
+          nameEn: input.nameEn,
+          parentId: input.parentId,
+        }),
+      ),
     );
     const rows = await this.listCategories(tenantId);
     return rows.find((row) => row.id === id);
@@ -788,10 +818,12 @@ export class CatalogService {
 
   async createUnit(tenantId: string, input: UnitInput) {
     const id = newId();
-    await withTenantTx(this.database.db, tenantId, (tx) =>
-      tx
-        .insert(unitsOfMeasure)
-        .values({ id, tenantId, code: input.code, nameAr: input.nameAr, nameEn: input.nameEn }),
+    await this.insertUnique(input.code, () =>
+      withTenantTx(this.database.db, tenantId, (tx) =>
+        tx
+          .insert(unitsOfMeasure)
+          .values({ id, tenantId, code: input.code, nameAr: input.nameAr, nameEn: input.nameEn }),
+      ),
     );
     const rows = await this.listUnits(tenantId);
     return rows.find((row) => row.id === id);

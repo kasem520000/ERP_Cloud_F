@@ -230,6 +230,24 @@ export type IncomeStatementQuery = {
   summary?: boolean;
   /** `قيمة مخزون بضاعة آخر المدة حتى هذا التاريخ` — on by default, as in the window. */
   withStock?: boolean;
+  /**
+   * 🧾 **ACC-003** — does the closing stock move the profit?
+   *
+   * `false` (the default, and the only correct answer for this system) means *no*: the
+   * cloud keeps a **perpetual** inventory — every sale posts its cost of goods sold
+   * (`3200004` and friends) and every purchase capitalises into `1270001`. So the profit
+   * is already revenue minus the cost of what was sold, and the stock still on hand is an
+   * asset on the balance sheet, not income. The desktop window could add closing stock
+   * (`CalcStockCost`) because it never posted COGS — it expensed purchases and plugged the
+   * remainder back in at period end. Copying that plug onto a perpetual ledger inflated the
+   * profit by exactly the closing stock (measured: 1050 instead of 150 on `E2E-CREDIT-001`).
+   *
+   * `true` reproduces the desktop's periodic arithmetic for a tenant that genuinely runs
+   * that way (purchases expensed, no COGS posted). It is an explicit opt-in, never a
+   * default: a wrong default here overstates profit silently, and the «✅ الحسابات
+   * متوازنة» strap cannot catch it — the plug balances the columns by construction.
+   */
+  stockInProfit?: boolean;
 };
 
 export type IncomeStatementRow = {
@@ -1465,6 +1483,7 @@ export class AccountingService {
     validateDayFilters(query as Record<string, unknown>, FROM_TO_LABELS_AR, 'ACCOUNTING_DATE_INVALID');
     const summary = query.summary !== false;
     const withStock = query.withStock !== false;
+    const stockInProfit = query.stockInProfit === true;
 
     return withTenantTx(this.database.db, tenantId, async (tx) => {
       const from = query.from ?? '0001-01-01';
@@ -1545,10 +1564,12 @@ export class AccountingService {
        * in, minus everything out, up to the end of the period.
        */
       const stock = withStock ? await this.stockValueAt(tx, tenantId, to, query.branchId) : new Decimal(0);
+      const informational = withStock && !stockInProfit;
       if (withStock) {
         const onDebit = stock.isNegative();
         rows.push({
           kind: 'stock',
+          ...(informational ? { informational: true } : {}),
           code: null,
           name: 'قيمة مخزون بضاعة آخر المدة حتى هذا التاريخ',
           debit: onDebit ? stock.abs().toFixed(4) : '0.0000',
@@ -1557,8 +1578,15 @@ export class AccountingService {
           balanceCredit: onDebit ? '0.0000' : stock.toFixed(4),
           status: statusOf(stock),
         });
-        if (onDebit) totalDebit = totalDebit.plus(stock.abs());
-        else totalCredit = totalCredit.plus(stock);
+        /**
+         * 🧾 **ACC-003** — the stock row is printed either way (the window has it, and it
+         * is a useful figure), but it only enters the totals under the periodic opt-in.
+         * When it is informational the columns are closed by the profit row alone.
+         */
+        if (stockInProfit) {
+          if (onDebit) totalDebit = totalDebit.plus(stock.abs());
+          else totalCredit = totalCredit.plus(stock);
+        }
       }
 
       const profitIsCredit = totalCredit.greaterThanOrEqualTo(totalDebit);
@@ -1583,6 +1611,7 @@ export class AccountingService {
           debit: totalDebit.toFixed(4),
           credit: totalCredit.toFixed(4),
           stock: stock.toFixed(4),
+          stockInProfit,
           profit: profit.toFixed(4),
           profitLabel,
           balanced: totalDebit.minus(totalCredit).abs().lessThan(0.005),

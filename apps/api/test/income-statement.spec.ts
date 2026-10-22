@@ -266,10 +266,25 @@ describe('قائمة الدخل — frmRptIncomeStatement', () => {
     expect(stock.name).toBe('قيمة مخزون بضاعة آخر المدة حتى هذا التاريخ');
     expect(amt(stock.credit)).toBe('200.0000');
     expect(amt(totalsOf(body).stock)).toBe('200.0000');
-    // 1000 + 300 إيرادات + 200 مخزون − 400 مصروفات = 1100 ربحاً، يُسجَّل في جانب المدين.
-    expect(amt(totalsOf(body).profit)).toBe('1100.0000');
-    expect(amt(totalsOf(body).debit)).toBe('1500.0000');
-    expect(amt(totalsOf(body).credit)).toBe('1500.0000');
+    /**
+     * 🧾 ACC-003 — الافتراضي صار التكلفة الدائمة: صفّ المخزون يُطبع **للعرض** ولا يدخل
+     * الربح (1300 إيراداً − 400 مصروفاً = 900). كان هذا الشرط يتوقع 1100 — أي أن المخزون
+     * 200 يُضاف إلى الدائن ثم يُقرأ الربح كفَرْق، وهو حساب نظامٍ **دوري** لا يُرحّل تكلفة
+     * المبيعات. البيئة هنا أقرب إلى الدوري (المخزون أُدخل بلا قيد COGS)، فالسطر التالي
+     * يثبت أن الخيار الدوري ما زال متاحاً صراحةً — وأن الافتراضي لم يعد يفعله.
+     */
+    expect(totalsOf(body).stockInProfit).toBe(false);
+    expect(stock.informational).toBe(true);
+    expect(amt(totalsOf(body).profit)).toBe('900.0000');
+    expect(amt(totalsOf(body).debit)).toBe('1300.0000');
+    expect(amt(totalsOf(body).credit)).toBe('1300.0000');
+
+    // سياسة الإقفال الدوري، بطلبٍ صريح — نفس 1100 القديمة.
+    const periodic = (await statement('stock_in_profit=1')).body as Record<string, unknown>;
+    expect(amt(totalsOf(periodic).profit)).toBe('1100.0000');
+    expect(amt(totalsOf(periodic).debit)).toBe('1500.0000');
+    expect(amt(totalsOf(periodic).credit)).toBe('1500.0000');
+    expect(totalsOf(periodic).stockInProfit).toBe(true);
   });
 
   it('7. عزل المؤسسات — قائمة دخل مؤسسة لا تُقرأ من أخرى', async () => {

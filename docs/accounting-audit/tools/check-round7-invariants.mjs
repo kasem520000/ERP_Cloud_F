@@ -167,11 +167,34 @@ const plRow = (label) => num(pl?.rows?.find((r) => r.section === label)?.amount)
 const revenue = plRow('إجمالي الإيرادات');
 const expenseShown = plRow('إجمالي المصروفات');
 const netProfit = plRow('صافي الربح');
-// ثابتٌ مستقلّ عن اصطلاح عرض المصروف: المصروف يُطرح دائماً من الإيراد. في R7 عُرض
-// «إجمالي المصروفات» سالباً (−475) وكان الصافي 865 بدل −85؛ وبعد إصلاح الإشارة في بناء R8
-// يُعرض موجباً (177) والصافي 83. الصيغة `revenue − |expense|` تحكم الحالتين معاً.
-const plExpected = revenue - Math.abs(expenseShown);
-check('PL-SIGN', 'صافي الربح = الإيرادات − |إجمالي المصروفات|',
+/**
+ * 🧾 **إصلاح أداة، لا إصلاح تقرير** — كان الثابت `revenue − |expense|`، وكان `abs` يعالج
+ * عيبَ عرض R7 (مصروفٌ يظهر سالباً وربحٌ مقلوب). لكن `abs` يفترض أن مجموع المصروفات **لا
+ * يكون سالباً إلا خطأً** — وهذا غير صحيح محاسبياً: حسابٌ مقابِل مثل «تسويات المخزون»
+ * (`3121004`) يصير رصيده دائناً عند فائض جرد، فيكون صافي المصروفات سالباً **عن حق**،
+ * والربح = الإيراد − (−٣٦٨٠) = ٤٧٨٠. بالأمس قِيس هذا على بيئةٍ أُعيد بناؤها بعد دورة توزيع
+ * كاملة: الأداة أعلنت FAIL والدفتر متوازن والتقرير صحيح — أي فشلُ أداة.
+ *
+ * والثابت الآن أقوى لا أضعف: يُقارن التقريرُ **بالأستاذ** (إيراد ومصروف بالصافي والإشارة
+ * الصحيحة)، ثم يُقارن الربحُ بالفرق بلا `abs`. فعيبُ R7 (إشارة مقلوبة في الصافي) ما زال
+ * يسقط: لأن المصروف في الأستاذ موجب فتصير الإشارة المعروضة سالبة، أو لأن الصافي لا يساوي
+ * الفرق.
+ */
+const glPl = await one(`
+  SELECT
+    coalesce(sum(CASE WHEN a.type = 'revenue' THEN l.credit - l.debit END), 0)::text AS revenue,
+    coalesce(sum(CASE WHEN a.type = 'expense' THEN l.debit - l.credit END), 0)::text AS expense
+  FROM journal_entry_lines l
+  JOIN journal_entries e ON e.id = l.entry_id
+  JOIN accounts a ON a.id = l.account_id
+  WHERE l.tenant_id = $1 AND e.status = 'posted' AND a.type IN ('revenue', 'expense')`, [TENANT]);
+check('PL-VS-GL', 'إيراد ومصروف التقرير = الأستاذ (بالصافي وبإشارته)',
+  `${num(glPl.revenue).toFixed(2)} / ${num(glPl.expense).toFixed(2)}`,
+  `${revenue.toFixed(2)} / ${expenseShown.toFixed(2)}`,
+  same(revenue, glPl.revenue) && same(expenseShown, glPl.expense),
+  `أستاذ: إيرادات ${glPl.revenue} · مصروفات ${glPl.expense}`);
+const plExpected = revenue - expenseShown;
+check('PL-SIGN', 'صافي الربح = الإيرادات − إجمالي المصروفات (كما هو معروض)',
   plExpected.toFixed(2), netProfit.toFixed(2), same(plExpected, netProfit),
   `إيرادات ${revenue} · مصروفات معروضة ${expenseShown}`);
 

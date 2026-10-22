@@ -34,12 +34,16 @@ type Row = {
   balanceDebit: string;
   balanceCredit: string;
   status: string;
+  /** 🧾 ACC-003 — closing stock printed for information, not computed into the profit. */
+  informational?: boolean;
 };
 
 type Totals = {
   debit: string;
   credit: string;
   stock: string;
+  /** False = perpetual costing: the stock is shown, the profit is not inflated by it. */
+  stockInProfit: boolean;
   profit: string;
   profitLabel: string;
   balanced: boolean;
@@ -53,6 +57,7 @@ const EMPTY: Totals = {
   debit: '0',
   credit: '0',
   stock: '0',
+  stockInProfit: false,
   profit: '0',
   profitLabel: '',
   balanced: true,
@@ -215,6 +220,17 @@ export default function IncomeStatementPage() {
             />
           </StatTiles>
 
+          {/**
+           * 🧾 ACC-003 — the reader must not have to guess why stock 900 does not appear
+           * in the profit. One sentence under the tiles, printed only when it matters.
+           */}
+          {totals.stockInProfit === false && Number(totals.stock) !== 0 ? (
+            <p className="muted" style={{ marginInline: 4 }}>
+              قيمة المخزون معروضة للمعلومة فقط: النظام يرحّل تكلفة المبيعات مع كل فاتورة، فرصيد
+              آخر المدة أصلٌ في الميزانية وليس إيراداً — إضافته إلى الربح تضخّمه.
+            </p>
+          ) : null}
+
           {rows.filter((row) => row.kind === 'account').length === 0 ? (
             <Empty
               title="لا توجد حسابات إيرادات أو مصروفات"
@@ -239,7 +255,12 @@ export default function IncomeStatementPage() {
                       className={row.kind === 'profit' ? 'opening' : undefined}
                     >
                       <td dir="ltr">{row.code ?? '—'}</td>
-                      <td>{row.name}</td>
+                      <td>
+                        {row.name}
+                        {row.informational ? (
+                          <span className="muted"> — للعرض فقط، غير محسوب في الربح</span>
+                        ) : null}
+                      </td>
                       <td className="num">{money(row.balanceDebit)}</td>
                       <td className="num">{money(row.balanceCredit)}</td>
                       <td>{statusLabel(row.status)}</td>

@@ -100,8 +100,25 @@ describe('Accounting audit acceptance — isolated E2E-CREDIT-001', () => {
     const net = new Map(result.rows.map((row) => [row.code, Number(row.net)]));
     expect(net.get('1270001')).toBe(900);
     expect(net.get('3200004')).toBe(300);
-    expect(net.get('12310001')).toBe(517.5);
-    expect(net.get('22111001')).toBe(-1380);
+    /**
+     * 🧾 م3 — الذمم تُقاس على **شجرة** حساب التحكّم: بعد أن صار لكل طرفٍ حسابٌ فرعيٌّ تحت
+     * `12310001`/`22111001` تُكتب الحركة على الأبناء، والحسابُ الأب يبقى صفراً في منشأةٍ
+     * جديدة. فالتوقّع 517.5/‏−1380 لم يتغيّر في **معناه** — تغيّر موضعه في الشجرة. ولو
+     * تُرك الشرط على الأب لصار الحارس يقيس فراغاً ويُعلن نجاحاً كاذباً بعد م3.
+     */
+    const subtree = async (code: string): Promise<number> => {
+      const rows = await sql!.query<{ net: string }>(
+        `SELECT coalesce(sum(l.debit-l.credit),0)::text AS net
+           FROM journal_entry_lines l JOIN journal_entries e ON e.id=l.entry_id
+           JOIN accounts a ON a.id=l.account_id
+          WHERE l.tenant_id=$1 AND e.status='posted'
+            AND a.path <@ (SELECT path FROM accounts WHERE tenant_id=$1 AND code=$2 AND deleted_at IS NULL LIMIT 1)`,
+        [actor.tenantId, code],
+      );
+      return Number(rows.rows[0]?.net ?? 0);
+    };
+    expect(await subtree('12310001')).toBe(517.5);
+    expect(await subtree('22111001')).toBe(-1380);
   });
 
   it('ACC-002: customer statement must retain the unpaid receivable', async () => {
