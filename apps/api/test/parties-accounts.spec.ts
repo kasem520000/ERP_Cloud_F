@@ -1,9 +1,15 @@
+import { Decimal } from 'decimal.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withOwnerClient } from '@erp/testing';
 
 import { OrgProvisioningService } from '../src/modules/organization/provisioning/org-provisioning.service.js';
 
-import { ALL_ORGANIZATION_PERMISSIONS, ALL_PLATFORM_PERMISSIONS, createActor, type Actor } from './fixtures.js';
+import {
+  ALL_ORGANIZATION_PERMISSIONS,
+  ALL_PLATFORM_PERMISSIONS,
+  createActor,
+  type Actor,
+} from './fixtures.js';
 import { api } from './http.js';
 import { createTestApp, type TestApp } from './test-app.js';
 
@@ -57,7 +63,14 @@ describe('Party receivable/payable accounts — م3', () => {
         [accountId],
       );
       return result.rows[0] as
-        | { code: string; name_ar: string; level: number; is_postable: boolean; parent_id: string; parent_code: string }
+        | {
+            code: string;
+            name_ar: string;
+            level: number;
+            is_postable: boolean;
+            parent_id: string;
+            parent_code: string;
+          }
         | undefined;
     });
 
@@ -213,7 +226,12 @@ describe('Party receivable/payable accounts — م3', () => {
   it('a credit sale posts the receivable leg on the customer account, not the control account', async () => {
     const created = await api(ctx.server, 'post', '/api/v1/sales/invoices', {
       token: actor.token,
-      body: { branchId, warehouseId, partyId: customerId, lines: [{ itemId, quantity: '1', unitPrice: '100', taxRate: '15' }] },
+      body: {
+        branchId,
+        warehouseId,
+        partyId: customerId,
+        lines: [{ itemId, quantity: '1', unitPrice: '100', taxRate: '15' }],
+      },
     });
     expect(created.status).toBe(201);
     const invoice = data(created.body) as { id: string; number: string; total: string };
@@ -232,16 +250,21 @@ describe('Party receivable/payable accounts — م3', () => {
     expect(receivableLine, 'the debit sits on the customer account').toBeDefined();
     expect(receivableLine?.debit).toBe('115.0000');
     // ولا سطرَ على الحساب العام: التحكّم يبقى حسابَ مجموعٍ لا يُرحَّل عليه من جديد.
-    expect(lines.some((line) => line.code === '12310001'), 'no line on the control account').toBe(false);
+    expect(
+      lines.some((line) => line.code === '12310001'),
+      'no line on the control account',
+    ).toBe(false);
   });
 
   it('the party balance counts the receivable lines once and separates the two sides', async () => {
-    const balance = await api(ctx.server, 'get', `/api/v1/parties/${customerId}/balance`, { token: actor.token });
-    expect(balance.status).toBe(200);
-    const body = data(balance.body) as { receivable: string; payable: string };
+    const balanceResponse = await api(ctx.server, 'get', `/api/v1/parties/${customerId}/balance`, {
+      token: actor.token,
+    });
+    expect(balanceResponse.status).toBe(200);
+    const body = data(balanceResponse.body) as { receivable: string; payable: string };
     // DEF-R7-006: كان الكشف يجمع الإيراد والضريبة والتكلفة والمخزون أيضاً فيُضاعف الرقم.
-    expect(Number(body.receivable)).toBeCloseTo(115, 4);
-    expect(Number(body.payable)).toBe(0);
+    expect(new Decimal(body.receivable).toFixed(4)).toBe('115.0000');
+    expect(new Decimal(body.payable).isZero()).toBe(true);
   });
 
   it('a receipt voucher credits the customer account (money comes off his own account)', async () => {
@@ -272,17 +295,27 @@ describe('Party receivable/payable accounts — م3', () => {
     const credit = lines.find((line) => line.code === account?.code);
     expect(credit, 'the receipt credits the customer account').toBeDefined();
     expect(credit?.credit).toBe('50.0000');
-    expect(lines.some((line) => line.code === '12310001'), 'no line on the control account').toBe(false);
+    expect(
+      lines.some((line) => line.code === '12310001'),
+      'no line on the control account',
+    ).toBe(false);
 
-    const after = await api(ctx.server, 'get', `/api/v1/parties/${customerId}/balance`, { token: actor.token });
-    expect(Number((data(after.body) as { receivable: string }).receivable)).toBeCloseTo(65, 4);
+    const after = await api(ctx.server, 'get', `/api/v1/parties/${customerId}/balance`, {
+      token: actor.token,
+    });
+    expect(new Decimal((data(after.body) as { receivable: string }).receivable).toFixed(4)).toBe('65.0000');
   });
 
   it('a second credit sale reuses the same account (idempotent)', async () => {
     const before = await partyRow(customerId);
     const created = await api(ctx.server, 'post', '/api/v1/sales/invoices', {
       token: actor.token,
-      body: { branchId, warehouseId, partyId: customerId, lines: [{ itemId, quantity: '1', unitPrice: '10', taxRate: '15' }] },
+      body: {
+        branchId,
+        warehouseId,
+        partyId: customerId,
+        lines: [{ itemId, quantity: '1', unitPrice: '10', taxRate: '15' }],
+      },
     });
     const invoice = data(created.body) as { id: string };
     const posted = await api(ctx.server, 'post', `/api/v1/sales/invoices/${invoice.id}/post`, {
@@ -306,7 +339,12 @@ describe('Party receivable/payable accounts — م3', () => {
   it('a credit purchase posts the payable leg on the supplier account', async () => {
     const created = await api(ctx.server, 'post', '/api/v1/purchase-invoices', {
       token: actor.token,
-      body: { branchId, warehouseId, partyId: supplierId, lines: [{ itemId, quantity: '2', unitPrice: '60', taxRate: '15' }] },
+      body: {
+        branchId,
+        warehouseId,
+        partyId: supplierId,
+        lines: [{ itemId, quantity: '2', unitPrice: '60', taxRate: '15' }],
+      },
     });
     expect(created.status).toBe(201);
     const draft = data(created.body) as { id: string };
@@ -317,13 +355,20 @@ describe('Party receivable/payable accounts — م3', () => {
     expect(posted.status).toBe(201);
 
     const account = await accountOf((await partyRow(supplierId)).payable as string);
-    const balance = await api(ctx.server, 'get', `/api/v1/parties/${supplierId}/balance`, { token: actor.token });
-    expect(Number((data(balance.body) as { payable: string }).payable)).toBeCloseTo(138, 4);
+    const payableBalance = await api(ctx.server, 'get', `/api/v1/parties/${supplierId}/balance`, {
+      token: actor.token,
+    });
+    expect(new Decimal((data(payableBalance.body) as { payable: string }).payable).toFixed(4)).toBe(
+      '138.0000',
+    );
 
     const lines = await journalLines(`Purchase invoice ${(data(posted.body) as { number: string }).number}`);
     const payableLine = lines.find((line) => line.code === account?.code);
     expect(payableLine?.credit).toBe('138.0000');
-    expect(lines.some((line) => line.code === '22111001'), 'no line on the control account').toBe(false);
+    expect(
+      lines.some((line) => line.code === '22111001'),
+      'no line on the control account',
+    ).toBe(false);
   });
 
   it('leaves the general customer and general supplier without a sub-account', async () => {
