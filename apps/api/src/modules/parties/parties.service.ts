@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax, import/order */
 import { Inject, Injectable } from '@nestjs/common';
 import { Decimal } from 'decimal.js';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 
 import { DomainError, errorCodes, newId } from '@erp/contracts';
 import { accounts, journalEntries, journalEntryLines, parties, partyContacts, paymentAllocations, paymentMethods, withTenantTx, type DatabaseHandle } from '@erp/database';
@@ -9,6 +9,7 @@ import { accounts, journalEntries, journalEntryLines, parties, partyContacts, pa
 import { DATABASE_HANDLE } from '../../database/database.module.js';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service.js';
 import { isUniqueViolation } from '../organization/shared/org-support.js';
+import { ensurePartyAccountInTx, partyLedgerAccounts } from './party-accounts.js';
 
 export type PaymentMethodInput = { code: string; nameAr: string; nameEn?: string; kind?: 'cash' | 'card' | 'transfer' | 'cheque' | 'credit'; dueDays?: number; cashLocationId?: string; isActive?: boolean; isDefault?: boolean };
 export type PartyInput = { kind: 'customer' | 'supplier' | 'both'; name: string; paymentMethodId?: string; legalName?: string; taxNo?: string; nationalId?: string; address?: Record<string, string | undefined>; phone?: string; email?: string; receivableAccountId?: string; payableAccountId?: string; creditLimit?: string; isOwner?: boolean; isContractor?: boolean; branchId?: string };
@@ -93,7 +94,30 @@ export class PartiesService {
     return decorated ?? row;
   }
   async update(tenantId: string, id: string, input: Partial<PartyInput>) { await withTenantTx(this.database.db, tenantId, (tx) => tx.update(parties).set({ ...input, updatedAt: new Date(), version: sql`${parties.version} + 1` }).where(and(eq(parties.tenantId, tenantId), eq(parties.id, id), isNull(parties.deletedAt)))); return this.get(tenantId, id); }
-  async create(tenantId: string, input: PartyInput) { const id = newId(); const code = await withTenantTx(this.database.db, tenantId, async (tx) => { const result = await tx.execute(sql`SELECT COALESCE(MAX(CAST(code AS INTEGER)), 0) + 1 AS next FROM parties WHERE tenant_id = ${tenantId} AND code ~ '^[0-9]+$'`); return String(Number((result.rows[0] as { next: string }).next).toString().padStart(6, '0')); }); await withTenantTx(this.database.db, tenantId, (tx) => tx.insert(parties).values({ id, tenantId, code, ...input, creditLimit: input.creditLimit ?? '0' })); return this.get(tenantId, id); }
+  /**
+   * 🧾 إنشاء طرف = إدراجُه **وحسابُ ذمّته** في معاملةٍ واحدة (DEF-R7-014/015، م3).
+   *
+   * كان الإدراجُ يتمّ في معاملةٍ والقراءة في أخرى، والحسابُ الفرعيّ لا يُنشأ أصلاً: فيُرحَّل
+   * كل بيعٍ آجلٍ على «عميل عام» ويُفرَّق بين العملاء بحقلٍ على السطر لا بحساب. وصار الآن:
+   * الطرفُ وحسابُه (مدينٌ للعميل، دائنٌ للمورّد) يُكتبان معاً أو لا يُكتبان — فلا يبقى في
+   * القاعدة طرفٌ بلا حساب ذمّةٍ إلا «عميل عام»/«مورد عام» عمداً.
+   *
+   * والحسابُ الممرَّر صراحةً (`receivableAccountId`/`payableAccountId`) يُحترَم ولا يُستبدل:
+   * منشأةٌ لها مخطّطُ حساباتٍ مخصّص تربط طرفها بحسابها هي.
+   */
+  async create(tenantId: string, input: PartyInput) {
+    const id = newId();
+    await withTenantTx(this.database.db, tenantId, async (tx) => {
+      const result = await tx.execute(sql`SELECT COALESCE(MAX(CAST(code AS INTEGER)), 0) + 1 AS next FROM parties WHERE tenant_id = ${tenantId} AND code ~ '^[0-9]+$'`);
+      const code = String(Number((result.rows[0] as { next: string }).next).toString().padStart(6, '0'));
+      await tx.insert(parties).values({ id, tenantId, code, ...input, creditLimit: input.creditLimit ?? '0' });
+      if (!input.receivableAccountId && (input.kind === 'customer' || input.kind === 'both'))
+        await ensurePartyAccountInTx(tx, tenantId, id, 'receivable');
+      if (!input.payableAccountId && (input.kind === 'supplier' || input.kind === 'both'))
+        await ensurePartyAccountInTx(tx, tenantId, id, 'payable');
+    });
+    return this.get(tenantId, id);
+  }
   /**
    * 🗑️ حذف عميل — `frmCustomers`. A party with a balance stays: the refusal protects the
    * ledger, not the row.
@@ -182,13 +206,85 @@ export class PartiesService {
     });
     return { id, ...input, amount: amount.toFixed(4) };
   }
+  /**
+   * 🧾 رصيدُ الطرف — مقصورٌ على **أسطر الذمم** لا على كل سطرٍ حمل `party_id`.
+   *
+   * DEF-R7-006: كان الرصيد يجمع كل أسطر القيد التي حملت `party_id`، وترحيلُ البيع كان يختم
+   * الطرفَ على الإيراد والضريبة والتكلفة والمخزون أيضاً. فعميلٌ رصيده 86.88 خرج كشفُه
+   * ‏281.88 مديناً و281.88 دائناً — رقمٌ لا يعني شيئاً ولا يُطابق الأعمار ولا الأستاذ.
+   *
+   * والقاعدة الآن: تُحصر الأسطر في حسابات الذمم — حسابُ الطرف الفرعيُّ إن وُجد، وأبوهُ
+   * (‏`12310001`/`22111001`) للقيود التاريخية التي لم تُعَد كتابتها. ثم يُفصل المدين عن
+   * الدائن بالحساب لا بالإشارة: حسابُ العميل يُقاس `مدين − دائن`، وحسابُ المورد `دائن − مدين`.
+   * فموردٌ له رصيدٌ لم يبقَ صفراً كما كان (`payable` كان ثابتاً `'0.0000'`).
+   */
   async partyBalance(tenantId: string, partyId: string, asOf?: string) {
     // رصيد صفرٌ لعميلٍ غير موجود رقمٌ كاذب؛ والكشف مثله. الغياب يُعلَن قبل الحساب.
-    await this.get(tenantId, partyId);
-    const rows = await withTenantTx(this.database.db, tenantId, (tx) => tx.select({ accountId: journalEntryLines.accountId, debit: journalEntryLines.debit, credit: journalEntryLines.credit, date: journalEntries.date, entryId: journalEntries.id }).from(journalEntryLines).innerJoin(journalEntries, eq(journalEntryLines.entryId, journalEntries.id)).where(and(eq(journalEntryLines.tenantId, tenantId), eq(journalEntryLines.partyId, partyId), eq(journalEntries.status, 'posted'), asOf ? sql`${journalEntries.date} <= ${asOf}` : undefined)));
-    const total = rows.reduce((sum, row) => sum.plus(new Decimal(row.debit).minus(row.credit)), new Decimal(0));
+    const party = await this.get(tenantId, partyId);
+    /**
+     * حساباتُ التحكّم بالرمز **تُحلّ إلى معرّفات**: `12310001` رمزٌ لا `id`، وتمريره إلى
+     * `inArray` يُنتج `22P02` فيردّ الـAPI 400 على قراءةٍ بريئة. وتُضاف إليها حساباتُ ملفّ
+     * الترحيل (‏`receivableAccountId`/`payableAccountId`) لأنها قد تكون غير الحسابين
+     * الافتراضيّين في منشأةٍ بمخطّطٍ مخصّص.
+     */
+    const controls = await withTenantTx(this.database.db, tenantId, (tx) =>
+      tx
+        .select({ id: accounts.id, code: accounts.code })
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.tenantId, tenantId),
+            isNull(accounts.deletedAt),
+            sql`${accounts.code} IN ('12310001', '22111001')`,
+          ),
+        ),
+    );
+    const controlReceivable = controls.find((row) => row.code === '12310001')?.id;
+    const controlPayable = controls.find((row) => row.code === '22111001')?.id;
+    const receivableAccounts = partyLedgerAccounts('receivable', controlReceivable ? [controlReceivable] : [], party.receivableAccountId);
+    const payableAccounts = partyLedgerAccounts('payable', controlPayable ? [controlPayable] : [], party.payableAccountId);
+    const allAccounts = [...new Set([...receivableAccounts, ...payableAccounts])];
+    const ownAccounts = [party.receivableAccountId, party.payableAccountId].filter(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
+    const rows = allAccounts.length
+      ? await withTenantTx(this.database.db, tenantId, (tx) =>
+          tx
+            .select({ accountId: journalEntryLines.accountId, debit: journalEntryLines.debit, credit: journalEntryLines.credit, date: journalEntries.date, entryId: journalEntries.id })
+            .from(journalEntryLines)
+            .innerJoin(journalEntries, eq(journalEntryLines.entryId, journalEntries.id))
+            .where(
+              and(
+                eq(journalEntryLines.tenantId, tenantId),
+                eq(journalEntries.status, 'posted'),
+                asOf ? sql`${journalEntries.date} <= ${asOf}` : undefined,
+                inArray(journalEntryLines.accountId, allAccounts),
+                or(
+                  eq(journalEntryLines.partyId, partyId),
+                  ownAccounts.length ? inArray(journalEntryLines.accountId, ownAccounts) : undefined,
+                ),
+              ),
+            ),
+        )
+      : [];
+    const receivableSet = new Set(receivableAccounts);
+    const payableSet = new Set(payableAccounts);
+    const receivable = rows
+      .filter((row) => receivableSet.has(row.accountId))
+      .reduce((sum, row) => sum.plus(new Decimal(row.debit).minus(row.credit)), new Decimal(0));
+    const payable = rows
+      .filter((row) => payableSet.has(row.accountId))
+      .reduce((sum, row) => sum.plus(new Decimal(row.credit).minus(row.debit)), new Decimal(0));
     const allocations = await withTenantTx(this.database.db, tenantId, (tx) => tx.select().from(paymentAllocations).where(and(eq(paymentAllocations.tenantId, tenantId), eq(paymentAllocations.partyId, partyId))));
-    return { receivable: total.toFixed(4), payable: '0.0000', open: rows.map((row) => ({ ...row, allocated: allocations.filter((a) => a.invoiceId === row.entryId).reduce((sum, a) => sum.plus(a.amount), new Decimal(0)).toFixed(4) })) };
+    return {
+      receivable: receivable.toFixed(4),
+      payable: payable.toFixed(4),
+      open: rows.map((row) => ({
+        ...row,
+        side: receivableSet.has(row.accountId) ? 'receivable' : 'payable',
+        allocated: allocations.filter((a) => a.invoiceId === row.entryId).reduce((sum, a) => sum.plus(a.amount), new Decimal(0)).toFixed(4),
+      })),
+    };
   }
   async assertCreditAvailable(tenantId: string, partyId: string, newAmount: string, override = false) {
     const party = await this.get(tenantId, partyId);

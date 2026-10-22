@@ -25,6 +25,7 @@ import { CustomFieldsService } from '../custom-fields/custom-fields.service.js';
 import { tryGetAuthContext } from '../platform/context/tenant-context.js';
 import { AccountingService, type JournalLineInput } from '../accounting/accounting.service.js';
 import { splitByCostCenter } from '../../common/cost-center-split.js';
+import { ensurePartyAccountInTx } from '../parties/party-accounts.js';
 import { InventoryService, type InventoryLine } from '../inventory/inventory.service.js';
 import { PostingProfilesService } from '../organization/posting-profiles/posting-profiles.service.js';
 import { SequencesService } from '../platform-services/index.js';
@@ -476,6 +477,19 @@ export class PurchasesService {
           relievedValue = txns.reduce((sum, row) => sum.plus(row.totalCost), new Decimal(0));
         }
         await this.assertPostingAccounts(tx, tenantId, costs, posting.settlement ?? 'credit', posting.settlementAccountId);
+        /**
+         * 🧾 م3 — حسابُ ذمّة المورّد قبل بناء القيد (DEF-R7-015). الشراءُ النقديّ لا يمسّ
+         * الذمة فلا يُنشأ حسابٌ له، و«مورد عام» يُعيد `null` فيبقى القيد على التحكّم.
+         */
+        const partyPayableAccountId = locked.partyId
+          ? await ensurePartyAccountInTx(
+              tx,
+              tenantId,
+              locked.partyId,
+              'payable',
+              mapping.payableAccountId ?? null,
+            )
+          : null;
         const journalLines = this.buildAutoJournal(
           { kind: locked.kind, invoiceDiscount: locked.invoiceDiscount, taxTotal: locked.taxTotal, extraTax: locked.extraTax, withholding: locked.withholding, total: postedTotal, partyId: locked.partyId, costCenterId: locked.costCenterId },
           lines.map((line) => ({ id: line.id, itemId: line.itemId, quantity: line.quantity, unitPrice: line.unitPrice, net: line.net, landedTotal: byLine.get(line.id)?.landedTotal ?? line.net, stocked: stockable.has(line.itemId), costCenterId: line.costCenterId })),
@@ -484,6 +498,7 @@ export class PurchasesService {
           relievedValue,
           posting.settlement ?? 'credit',
           posting.settlementAccountId,
+          partyPayableAccountId,
         );
         const journal = await this.accounting.postJournalInTx(tx, tenantId, {
           branchId: locked.branchId,
@@ -558,6 +573,12 @@ export class PurchasesService {
     relievedValue: Decimal,
     settlement: 'credit' | 'cash' | 'bank',
     settlementAccountId?: string,
+    /**
+     * 🧾 م3 — حسابُ ذمّة المورّد نفسه (DEF-R7-015)، يُحسب في `post` بـ
+     * `ensurePartyAccountInTx`، فتُقيَّد ذمّةُ الشراء الآجل على حساب المورّد الفرعيّ تحت
+     * `22111001` لا على الحساب العام. وغيابُه يُبقي السلوك القديم (حسابُ التحكّم).
+     */
+    partyPayableAccountId?: string | null,
   ): JournalLineInput[] {
     const need = (key: string): string => {
       const accountId = mapping[key];
@@ -567,9 +588,11 @@ export class PurchasesService {
     if (money(locked.withholding ?? '0').abs().gt(0)) {
       throw new DomainError('PURCHASE_WITHHOLDING_MANUAL_POSTING', 'Purchases with withholding need explicit journal lines', 422);
     }
+    /** حسابُ الذمة الفعليّ: حسابُ المورّد إن وُجد، وإلا حسابُ التحكّم من ملفّ الترحيل. */
+    const payable = (): string => partyPayableAccountId ?? need('payableAccountId');
     const settlementAccount =
       settlement === 'credit'
-        ? need('payableAccountId')
+        ? payable()
         : (settlementAccountId ?? (() => { throw new DomainError('PURCHASE_SETTLEMENT_ACCOUNT_REQUIRED', 'A cash or bank account is required for immediate settlement', 422, { field: 'settlementAccountId' }); })());
     const settlementParty = settlement === 'credit' ? locked.partyId : null;
     const journal: JournalLineInput[] = [];

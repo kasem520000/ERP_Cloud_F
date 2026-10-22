@@ -122,20 +122,36 @@ const invGl = await one(`
 check('INVENTORY-VS-GL', 'قيمة المخزون = رصيد 1270001', stock.value, invGl.net, same(stock.value, invGl.net));
 
 // 3) الذمم المدينة: الأستاذ مقابل تقرير الأعمار
-const arGl = await one(`
+/**
+ * 🧾 م3 — الذمم تُقاس على **شجرة** حساب التحكّم لا على صفّه وحده: بعد أن صار لكل طرفٍ حسابٌ
+ * فرعيٌّ تحت `12310001`/`22111001` تُكتب الحركةُ الجديدة على الأبناء، والقيودُ التاريخية على
+ * الأب. فالمجموع الصحيح = الأب + أبنائه (‏`path <@`). ولو قيس الأبُ وحده لانخفض الرقم بعد
+ * أول فاتورةٍ آجلةٍ جديدة بلا أن يتغيّر دينارٌ في الواقع — وهو فشلُ أداةٍ لا عيبُ دفتر.
+ */
+const subtreeNet = (code) => `
   SELECT coalesce(sum(l.debit - l.credit),0)::text AS net
-  FROM journal_entry_lines l JOIN journal_entries e ON e.id = l.entry_id JOIN accounts a ON a.id = l.account_id
-  WHERE l.tenant_id = $1 AND e.status = 'posted' AND a.code = '12310001'`, [TENANT]);
+  FROM journal_entry_lines l JOIN journal_entries e ON e.id = l.entry_id
+  JOIN accounts a ON a.id = l.account_id
+  WHERE l.tenant_id = $1 AND e.status = 'posted'
+    AND a.path <@ (SELECT path FROM accounts WHERE tenant_id = $1 AND code = '${code}' AND deleted_at IS NULL LIMIT 1)`;
+const arGl = await one(subtreeNet('12310001'), [TENANT]);
 const arAging = await report('ar-aging');
 check('AR-AGING-VS-GL', 'إجمالي أعمار الذمم المدينة = رصيد 12310001',
   arGl.net, arAging?.totals?.due, same(arGl.net, arAging?.totals?.due));
 
 // 4) كشف الطرف: المدين − الدائن لكل عميل = ذمته في الأستاذ
 const arByParty = await q(`
-  SELECT l.party_id::text AS party_id, coalesce(sum(l.debit - l.credit),0)::text AS net
-  FROM journal_entry_lines l JOIN journal_entries e ON e.id = l.entry_id JOIN accounts a ON a.id = l.account_id
-  WHERE l.tenant_id = $1 AND e.status = 'posted' AND a.code = '12310001' AND l.party_id IS NOT NULL
-  GROUP BY l.party_id`, [TENANT]);
+  SELECT p.id::text AS party_id, coalesce(sum(l.debit - l.credit),0)::text AS net
+  FROM parties p
+  JOIN journal_entry_lines l ON l.tenant_id = p.tenant_id
+  JOIN journal_entries e ON e.id = l.entry_id AND e.status = 'posted'
+  WHERE p.tenant_id = $1 AND p.deleted_at IS NULL
+    AND (l.account_id IN (p.receivable_account_id, p.payable_account_id)
+         OR (l.party_id = p.id AND l.account_id IN (
+              SELECT id FROM accounts WHERE tenant_id = $1 AND deleted_at IS NULL
+                AND code IN ('12310001', '22111001'))))
+  GROUP BY p.id
+  HAVING coalesce(sum(l.debit - l.credit),0) <> 0`, [TENANT]);
 for (const party of arByParty) {
   const st = await report('party-statement', { partyId: party.party_id });
   const statementNet = num(st?.totals?.debit) - num(st?.totals?.credit);
@@ -290,10 +306,13 @@ check('AUDIT-TRAIL-POSTED-BY', `كل قيد من ${TRAIL_POST_FIX_FROM} يحمل
   num(trail.historical) > 0 ? `بقايا تاريخية ${trail.historical} قيداً بلا مُرحِّل (لا تُخترع)` : undefined);
 
 // 13) الذمم الدائنة: أعمار الموردين = رصيد حساب الموردين
+/** 🧾 م3 — شجرةُ حساب الموردين (الأب + أبناؤه)، كما في الذمم المدينة. */
 const apGl = await one(`
   SELECT coalesce(sum(l.credit - l.debit),0)::text AS net
-  FROM journal_entry_lines l JOIN journal_entries e ON e.id = l.entry_id JOIN accounts a ON a.id = l.account_id
-  WHERE l.tenant_id = $1 AND e.status = 'posted' AND a.code = '22111001'`, [TENANT]);
+  FROM journal_entry_lines l JOIN journal_entries e ON e.id = l.entry_id
+  JOIN accounts a ON a.id = l.account_id
+  WHERE l.tenant_id = $1 AND e.status = 'posted'
+    AND a.path <@ (SELECT path FROM accounts WHERE tenant_id = $1 AND code = '22111001' AND deleted_at IS NULL LIMIT 1)`, [TENANT]);
 const apAging = await report('ap-aging');
 check('AP-AGING-VS-GL', 'إجمالي أعمار الذمم الدائنة = رصيد 22111001',
   apGl.net, apAging?.totals?.due, same(apGl.net, apAging?.totals?.due));

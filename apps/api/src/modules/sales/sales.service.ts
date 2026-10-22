@@ -41,6 +41,7 @@ import { splitByCostCenter } from '../../common/cost-center-split.js';
 import { InventoryService, type InventoryLine } from '../inventory/inventory.service.js';
 import { PostingProfilesService } from '../organization/posting-profiles/posting-profiles.service.js';
 import { isUniqueViolation } from '../organization/shared/org-support.js';
+import { ensurePartyAccountInTx } from '../parties/party-accounts.js';
 import { tryGetAuthContext } from '../platform/context/tenant-context.js';
 import { SequencesService } from '../platform-services/index.js';
 import { ApprovalService } from '../approvals/approvals.service.js';
@@ -1059,6 +1060,29 @@ export class SalesService {
             { field: 'settlementAccountId' },
           );
       }
+      /**
+       * 🧾 م3 — حسابُ ذمّة الطرف قبل بناء القيد (DEF-R7-014).
+       *
+       * البيعُ النقديّ لا يمسّ الذمة أصلاً، فلا يُنشأ حسابٌ لعميلٍ اشترى نقداً فقط: الحسابُ
+       * يُنشأ عند أول حاجةٍ حقيقيةٍ إليه. وإن لم يوجد طرفٌ (بيعُ «عميل نقدي») أو كان الطرفُ
+       * هو «عميل عام» عادت `null` فبقي القيدُ على حساب التحكّم كما كان — لا سطرَ يتغيّر
+       * بلا سبب.
+       */
+      const touchesReceivable =
+        posting.settlement === 'credit' ||
+        (posting.settlements ?? []).length > 0 ||
+        locked.kind === 'sale_return' ||
+        locked.kind === 'credit_note';
+      const partyReceivableAccountId =
+        locked.partyId && touchesReceivable
+          ? await ensurePartyAccountInTx(
+              tx,
+              tenantId,
+              locked.partyId,
+              'receivable',
+              mapping.receivableAccountId ?? null,
+            )
+          : null;
       const lines = this.buildAutoJournal(
         locked,
         mapping,
@@ -1067,6 +1091,7 @@ export class SalesService {
         resolvedSettlementAccountId,
         posting.settlements,
         costRows,
+        partyReceivableAccountId,
       );
       await this.accounting.postJournalInTx(tx, tenantId, {
         branchId: locked.branchId,
@@ -1367,6 +1392,13 @@ export class SalesService {
     settlements?: { method: 'cash' | 'card' | 'bank'; amount: string; accountId: string }[],
     /** R9 — سطور الفاتورة بأبعادها: الصافي والتكلفة والمركز. */
     plainCosts: Array<{ net: string | null; costTotal: string | null; costCenterId: string | null }> = [],
+    /**
+     * 🧾 م3 — حسابُ ذمّة **الطرف نفسه** (DEF-R7-014). يُحسب في `postInTx` بـ
+     * `ensurePartyAccountInTx`، فتُقيَّد رجلُ الذمة على حساب العميل الفرعيّ تحت `12310001`
+     * لا على الحساب العام. وغيابُه (طرفٌ غير موجود، أو «عميل عام») يُبقي السلوك القديم:
+     * رجلُ الذمة على حساب التحكّم من ملفّ الترحيل.
+     */
+    partyReceivableAccountId?: string | null,
   ): { accountId: string; debit?: string; credit?: string; partyId?: string; costCenterId?: string; description?: string }[] {
     const need = (key: string): string => {
       const accountId = mapping[key];
@@ -1376,6 +1408,12 @@ export class SalesService {
         });
       return accountId;
     };
+    /**
+     * حسابُ الذمة الفعليّ: حسابُ الطرف إن أمكن، وإلا حسابُ التحكّم من ملفّ الترحيل. ودالّةٌ
+     * واحدة يُمرَّر إليها كلُّ موضعٍ يكتب ذمةً (بيعٌ آجل، فاتورةٌ مختلطةٌ دُفع بعضها، مرتجعٌ
+     * لم يُردَّ نقداً) — فلا يبقى موضعٌ يكتب على الأب بعد اليوم، ولا يختلف موضعٌ عن آخر.
+     */
+    const receivable = (): string => partyReceivableAccountId ?? need('receivableAccountId');
     // Cash and bank sales debit the till/bank account instead of the receivable,
     // exactly like the desktop's payment-method choice at save time. The account
     // must come from a real cash location — never from an unvalidated mapping.
@@ -1388,7 +1426,7 @@ export class SalesService {
     const tenders = settlements ?? [];
     const settlementAccount =
       settlement === 'credit'
-        ? need('receivableAccountId')
+        ? receivable()
         : (settlementAccountId ??
           (() => {
             throw new DomainError(
@@ -1470,7 +1508,7 @@ export class SalesService {
       if (tenders.length) {
         for (const tender of tenders) leg(tender.accountId, money(tender.amount), new Decimal(0), null);
         // الباقي على ذمة العميل باسمه — فإن دُفع كلُّ شيء لم يُكتب سطرُ ذمةٍ أصلاً.
-        if (onAccount.gt(0)) leg(need('receivableAccountId'), onAccount, new Decimal(0), locked.partyId);
+        if (onAccount.gt(0)) leg(receivable(), onAccount, new Decimal(0), locked.partyId);
       } else {
         leg(settlementAccount, documentTotal, new Decimal(0), settlementParty);
       }
@@ -1488,7 +1526,7 @@ export class SalesService {
     } else {
       if (tenders.length) {
         for (const tender of tenders) leg(tender.accountId, new Decimal(0), money(tender.amount), null);
-        if (onAccount.gt(0)) leg(need('receivableAccountId'), new Decimal(0), onAccount, locked.partyId);
+        if (onAccount.gt(0)) leg(receivable(), new Decimal(0), onAccount, locked.partyId);
       } else {
         leg(settlementAccount, new Decimal(0), documentTotal, settlementParty);
       }

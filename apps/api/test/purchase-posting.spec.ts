@@ -23,6 +23,7 @@ describe('purchase posting engine', () => {
   let itemId = '';
   let serviceItemId = '';
   let supplierId = '';
+  let supplierPayableAccountId = '';
   let expenseAccountId = '';
 
   const data = (body: Record<string, unknown>): Record<string, unknown> =>
@@ -94,6 +95,13 @@ describe('purchase posting engine', () => {
       body: { kind: 'supplier', name: 'مورد الترحيل' },
     });
     supplierId = data(supplier.body).id as string;
+    /**
+     * 🧾 م3 — ذمّةُ المورّد صارت على **حسابه الفرعيّ** تحت `22111001` لا على الحساب العام
+     * (DEF-R7-015). فيُقرأ حسابه من بطاقته ويُتوقّع القيد عليه؛ وحسابُ التحكّم يبقى بلا سطر.
+     */
+    const supplierCard = await api(ctx.server, 'get', `/api/v1/parties/${supplierId}`, { token: actor.token });
+    supplierPayableAccountId = data(supplierCard.body).payableAccountId as string;
+    expect(supplierPayableAccountId, 'the party carries its own payable account').toMatch(/^[0-9a-f-]{36}$/i);
 
     const resolved = await api(ctx.server, 'get', `/api/v1/branch-posting-profiles/resolve?branchId=${branchId}&docType=purchase_invoice`, {
       token: actor.token,
@@ -208,7 +216,8 @@ describe('purchase posting engine', () => {
     expect(byAccount.get(mapping.vatInputAccountId)?.debit).toBe('147.0000');
     expect(byAccount.get(expenseAccountId)?.debit).toBe('50.0000');
     expect(byAccount.get(mapping.discountReceivedAccountId)?.credit).toBe('20.0000');
-    expect(byAccount.get(mapping.payableAccountId)?.credit).toBe('1277.0000');
+    expect(byAccount.get(supplierPayableAccountId)?.credit).toBe('1277.0000');
+    expect(byAccount.has(mapping.payableAccountId), 'no line on the control account').toBe(false);
     const debit = journal.lines.reduce((sum, line) => sum + Number(line.debit), 0);
     const credit = journal.lines.reduce((sum, line) => sum + Number(line.credit), 0);
     expect(debit.toFixed(4)).toBe(credit.toFixed(4));
@@ -296,7 +305,8 @@ describe('purchase posting engine', () => {
     const byAccount = new Map(journal.lines.map((line) => [line.accountId, line]));
     // Dr payable 460 / Cr inventory 432 (4 × 108 average) / Cr VAT 60 /
     // Dr COGS 32 (the freight the supplier does not refund).
-    expect(byAccount.get(mapping.payableAccountId)?.debit).toBe('460.0000');
+    expect(byAccount.get(supplierPayableAccountId)?.debit).toBe('460.0000');
+    expect(byAccount.has(mapping.payableAccountId), 'no line on the control account').toBe(false);
     expect(byAccount.get(mapping.inventoryAccountId)?.credit).toBe('432.0000');
     expect(byAccount.get(mapping.vatInputAccountId)?.credit).toBe('60.0000');
     expect(byAccount.get(mapping.cogsAccountId)?.debit).toBe('32.0000');

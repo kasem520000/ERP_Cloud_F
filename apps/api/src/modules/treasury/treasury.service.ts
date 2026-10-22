@@ -34,6 +34,7 @@ import { tryGetAuthContext } from '../../request-context/request-context.js';
 import { AccountingService, type JournalLineInput } from '../accounting/accounting.service.js';
 import { WebhookPublisher } from '../developer/webhook-publisher.service.js';
 import { PostingProfilesService } from '../organization/posting-profiles/posting-profiles.service.js';
+import { ensurePartyAccountInTx } from '../parties/party-accounts.js';
 import { SequencesService } from '../platform-services/index.js';
 import { FileAttachmentRegistry } from '../platform-services/files/file-attachments.js';
 
@@ -563,16 +564,31 @@ export class TreasuryService implements OnModuleInit {
       );
 
     let counterAccountId = voucher.counterAccountId ?? undefined;
+    /**
+     * 🧾 م3 — ذمّةُ الطرف على حسابه الفرعيّ (DEF-R7-014/015).
+     *
+     * كان السند يقرأ `party.receivableAccountId` الجاهز، وهو `NULL` لكل طرفٍ أُنشئ من الشاشة
+     * قبل م3، فيسقط على حساب التحكّم من ملفّ الترحيل: تحصيلُ عميلٍ بعينه يُقيَّد على «عميل
+     * عام». وصار يُضمن الحسابُ وقت الحاجة (`ensurePartyAccountInTx`) — تُنشئه إن غاب،
+     * وتُعيد القائم إن وُجد — ثم يُستعمل. و`profileAccount` يبقى أباً احتياطياً للسند بلا
+     * طرف، أو لطرفٍ ليس من نوع هذه الذمة (مورّدٌ يُقبض منه، مثلاً).
+     */
     if (!counterAccountId && voucher.partyId) {
-      const [party] = await tx
-        .select()
-        .from(parties)
-        .where(and(eq(parties.tenantId, tenantId), eq(parties.id, voucher.partyId)))
-        .limit(1);
       counterAccountId =
-        voucher.kind === 'receipt'
-          ? (party?.receivableAccountId ?? undefined)
-          : (party?.payableAccountId ?? undefined);
+        (await ensurePartyAccountInTx(
+          tx,
+          tenantId,
+          voucher.partyId,
+          voucher.kind === 'receipt' ? 'receivable' : 'payable',
+          await this.profileAccount(
+            tx,
+            tenantId,
+            voucher.branchId,
+            docType,
+            voucher.kind === 'receipt' ? 'receivableAccountId' : 'payableAccountId',
+            { required: false },
+          ),
+        )) ?? undefined;
     }
     if (!counterAccountId)
       counterAccountId = await this.profileAccount(

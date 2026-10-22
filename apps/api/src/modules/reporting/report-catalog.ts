@@ -1399,10 +1399,21 @@ const partyControlAccounts = sql`(
             SELECT NULLIF(p.mapping->>'payableAccountId', '')::uuid
             FROM branch_posting_profiles p WHERE p.tenant_id = jel.tenant_id
           )`;
+/**
+ * 🧾 م3 — بعد أن صار لكل طرفٍ حسابُه الفرعيُّ تحت حساب التحكّم (DEF-R7-014/015)، صارت
+ * الحركة تُقرأ من **مصدرين** لا من أحدهما:
+ *
+ * 1. حسابُ الطرف نفسه (`receivable_account_id`/`payable_account_id`) — كل ما رُحِّل بعد م3؛
+ * 2. أسطرُه القديمة على **حساب التحكّم** (`jel.party_id = party.id` ومعه قيدُ الحساب) — القيودُ
+ *    التاريخية التي لم تُعَد كتابتها، وهي «بقايا الأب» التي تُقاس ولا تُخفى.
+ *
+ * وكان `CASE` يجعل المصدرَ واحداً: فطرفٌ له حسابٌ صار يُقرأ من حسابه وحده فتُختفي أسطرُه
+ * القديمة من كشفه، ويصير كشفُه صفراً وذمّتُه في الأستاذ 86.88 — وهو أسوأ من العيب الأصلي
+ * لأنه يُخفي رصيداً قائماً. والشرطان لا يتداخلات: السطر إمّا على حساب الابن أو على الأب.
+ */
 const partyMovement = (alias: SQL): SQL => sql`(
-          CASE WHEN ${alias}.receivable_account_id IS NULL AND ${alias}.payable_account_id IS NULL
-               THEN jel.party_id = ${alias}.id AND jel.account_id IN ${partyControlAccounts}
-               ELSE jel.account_id IN (${partyAccounts(alias)}) END)`;
+          (jel.account_id IN (${partyAccounts(alias)}))
+          OR (jel.party_id = ${alias}.id AND jel.account_id IN ${partyControlAccounts}))`;
 
 /** 🏷️ نوع الحساب — «عملاء» · «موردين» · «الكل», as `Customers.type` at the desktop. */
 const partyKindScope = (alias: string, partyKind?: string): SQL => {
