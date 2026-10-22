@@ -3075,6 +3075,46 @@ export class InventoryService {
           };
         }),
       );
+      /**
+       * 📋 DEF-R7-008 — الجردُ **المسودّة** يُظهر الفرقَ الذي سيُرحَّل، لا صفراً «مطابقاً».
+       *
+       * كان `expected_qty` يُكتب صفراً عند الإنشاء، و`variance_qty/variance_value` عند الترحيل
+       * وحده. فمعتمدٌ يفتح مسودّةً فيها «مجرود 200 / دفتري 0» يقرأ عمود الفرق «مطابق» والفرق
+       * 0.00، ثم بعد الترحيل يرى +200 و760.00 — أي أن أهمّ رقمٍ في المستند يُقال خطأً حتى
+       * اللحظة التي يُرحَّل فيها. الآن يُقرأ الرصيد الرسمي عند الحفظ، ويُحسب الفرق وقيمته من
+       * تكلفة السطر ثم سعر شراء الصنف — وهي القيم نفسها التي يُعيد الخادمُ حسابها عند الترحيل
+       * (فالترحيل يبقى هو الحاكم، وهذه قراءةٌ مطابقة له لا بديلٌ عنه).
+       */
+      await tx.execute(sql`
+        UPDATE stock_adjustment_lines line
+        SET expected_qty = coalesce((
+              SELECT balance.quantity FROM stock_balances balance
+              WHERE balance.tenant_id = ${tenantId}::uuid
+                AND balance.item_id = line.item_id
+                AND balance.warehouse_id = ${input.warehouseId}::uuid
+              LIMIT 1
+            ), 0)
+        WHERE line.adjustment_id = ${id}::uuid AND line.tenant_id = ${tenantId}::uuid
+      `);
+      await tx.execute(sql`
+        UPDATE stock_adjustment_lines line
+        SET variance_qty = line.counted_qty - line.expected_qty,
+            variance_value = round(
+              (line.counted_qty - line.expected_qty)
+                * coalesce(line.unit_cost, (
+                    SELECT item.purchase_price FROM items item
+                    WHERE item.id = line.item_id AND item.tenant_id = ${tenantId}::uuid
+                    LIMIT 1
+                  ), (
+                    SELECT balance.average_cost FROM stock_balances balance
+                    WHERE balance.tenant_id = ${tenantId}::uuid
+                      AND balance.item_id = line.item_id
+                      AND balance.warehouse_id = ${input.warehouseId}::uuid
+                    LIMIT 1
+                  ), 0), 4)
+        WHERE line.adjustment_id = ${id}::uuid AND line.tenant_id = ${tenantId}::uuid
+      `);
+
       return { ...adjustment, lines: await this.adjustmentLines(tx, tenantId, id) };
     });
   }

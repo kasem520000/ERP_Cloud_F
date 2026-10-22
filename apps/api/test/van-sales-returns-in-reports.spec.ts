@@ -248,7 +248,7 @@ describe('van-sales returns are netted in every money aggregate, at the official
        */
       await tx.execute(sql`
         INSERT INTO company_profiles (tenant_id, name_ar, tax_no)
-        VALUES (${tenantB}::uuid, 'مخابز التثبيت', '310000000000002')
+        VALUES (${tenantB}::uuid, 'مخابز التثبيت', '310000000000003')
         ON CONFLICT (tenant_id) DO UPDATE SET name_ar = EXCLUDED.name_ar, tax_no = EXCLUDED.tax_no
       `);
       await tx.execute(sql`

@@ -50,6 +50,14 @@ const BASE: VanDocumentPrintView = {
   documentNumber: 'VSD-2026-000123',
   invoiceNumber: 'INV-2026-000456',
   invoiceStatus: 'submitted',
+  /** 🧾 حالةُ الامتثال من الخادم: هذه مُرسلةٌ فعلًا (لها UUID وحالة). */
+  zatcaCompliance: {
+    phase: 'phase2_submitted',
+    submitted: true,
+    status: 'submitted',
+    uuid: 'uuid-issued-1',
+    noteAr: 'فاتورة ضريبية موقّعة/مُرسلة إلكترونيًّا — لها أثرٌ لدى الهيئة.',
+  },
   saleDate: '2026-10-14',
   companyName: 'مخابز الوحدة',
   companyNameEn: 'Al-Wahda Bakeries',
@@ -280,8 +288,30 @@ describe('the tenant’s identity is printed, never an invented one', () => {
 
   it('says which tax document this is, from the server’s mode and status', () => {
     const tax = buildVanDocumentPrintHtml(printView());
-    expect(tax).toContain('فاتورة ضريبية إلكترونية (مبيعات توزيع)');
-    expect(tax).toContain(`مستند ضريبي إلكتروني — الحالة: ${BASE.invoiceStatus}`);
+    expect(tax).toContain('فاتورة ضريبية مبسطة (مبيعات توزيع — رمز QR للمرحلة الأولى)');
+    // ‏مُرسلةٌ فعلًا (لها UUID) ⇒ الورقةُ تقول «مُرسلة» وحالتَها.
+    expect(tax).toContain(`فاتورة ضريبية مُرسلة إلكترونيًّا — الحالة: ${BASE.invoiceStatus}`);
+
+    /**
+     * 🧾 **والحالةُ الصادقة**: حين يخلو المستندُ من أثر الإرسال (وهو حالُ مستندات التوزيع
+     * اليوم: رمزُ QR للمرحلة الأولى فقط) لا تقول الورقةُ «إلكترونية» ولا تطبع `—` في خانة
+     * الحالة، بل تقول إنّها لم تُرسل. كان في هذا الموضع عنوانٌ «فاتورة ضريبية إلكترونية»
+     * وحالةٌ فارغة — وعدٌ بالامتثال لا سند له (DEF-R7-007).
+     */
+    const notSubmitted = buildVanDocumentPrintHtml(
+      printView({
+        invoiceStatus: null,
+        zatcaCompliance: {
+          phase: 'phase1_qr',
+          submitted: false,
+          status: null,
+          uuid: null,
+          noteAr: 'رمز QR للمرحلة الأولى فقط: لم تُرسل هذه الفاتورة إلى هيئة الزكاة بعد.',
+        },
+      }),
+    );
+    expect(notSubmitted).toContain('لم تُرسل إلى هيئة الزكاة بعد');
+    expect(notSubmitted).not.toContain('مُرسلة إلكترونيًّا');
 
     const internal = buildVanDocumentPrintHtml(
       printView({ invoiceMode: 'internal_delivery', taxPolicyStatus: 'معفاة داخليًّا' }),

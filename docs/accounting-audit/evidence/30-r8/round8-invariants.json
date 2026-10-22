@@ -1,0 +1,164 @@
+{
+  "at": "2026-10-22T01:00:20.711Z",
+  "api": "http://127.0.0.1:3200/api/v1",
+  "tenantId": "01a160ef-188d-71f8-ad4f-b8e7d8015ba9",
+  "totals": {
+    "checks": 19,
+    "passed": 8,
+    "failed": 11
+  },
+  "results": [
+    {
+      "id": "GL-BALANCED",
+      "title": "مجموع مدين الأستاذ = مجموع دائنه",
+      "expected": "1562.7500",
+      "actual": "1562.7500",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "INVENTORY-VS-GL",
+      "title": "قيمة المخزون = رصيد 1270001",
+      "expected": "608.0000",
+      "actual": "608.0000",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "AR-AGING-VS-GL",
+      "title": "إجمالي أعمار الذمم المدينة = رصيد 12310001",
+      "expected": "86.8750",
+      "actual": "186.8750",
+      "pass": false,
+      "note": ""
+    },
+    {
+      "id": "PARTY-STATEMENT-01a160ef",
+      "title": "رصيد كشف العميل = ذمته في حساب الذمم",
+      "expected": "86.8750",
+      "actual": "-100.0000",
+      "pass": false,
+      "note": "مدين 281.88 / دائن 381.88"
+    },
+    {
+      "id": "PL-SIGN",
+      "title": "صافي الربح = الإيرادات − |إجمالي المصروفات|",
+      "expected": "83.00",
+      "actual": "83.00",
+      "pass": true,
+      "note": "إيرادات 260 · مصروفات معروضة 177"
+    },
+    {
+      "id": "INVOICE-PROFIT-SI-000002",
+      "title": "تكلفة الفاتورة في التقرير = تكلفة المبيعات المرحّلة لها",
+      "expected": "95.0000",
+      "actual": "0.0000",
+      "pass": false,
+      "note": "صافي 162.5000 · ربح التقرير 162.5000"
+    },
+    {
+      "id": "INVOICE-PROFIT-SI-000001",
+      "title": "تكلفة الفاتورة في التقرير = تكلفة المبيعات المرحّلة لها",
+      "expected": "76.0000",
+      "actual": "0.0000",
+      "pass": false,
+      "note": "صافي 130.0000 · ربح التقرير 130.0000"
+    },
+    {
+      "id": "INVOICE-HEADER-SI-000001",
+      "title": "cost_total في الترويسة = مجموع أسطر الفاتورة",
+      "expected": "76.0000",
+      "actual": "0.0000",
+      "pass": false,
+      "note": ""
+    },
+    {
+      "id": "INVOICE-HEADER-SI-000002",
+      "title": "cost_total في الترويسة = مجموع أسطر الفاتورة",
+      "expected": "95.0000",
+      "actual": "0.0000",
+      "pass": false,
+      "note": ""
+    },
+    {
+      "id": "INVOICE-HEADER-SR-000001",
+      "title": "cost_total في الترويسة = مجموع أسطر الفاتورة",
+      "expected": "19.0000",
+      "actual": "0.0000",
+      "pass": false,
+      "note": ""
+    },
+    {
+      "id": "CASH-STATEMENT-ALL",
+      "title": "كشف الصندوق بلا صندوق («الكل») = حركة كل حسابات النقد",
+      "expected": "249.50",
+      "actual": "0.00",
+      "pass": false,
+      "note": "صادر متوقع 62.38 · صادر التقرير 0.00"
+    },
+    {
+      "id": "CASH-STATEMENT-1211001",
+      "title": "كشف «الصندوق الرئيسي» = حركة حسابه",
+      "expected": "187.13",
+      "actual": "187.12",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "CASH-STATEMENT-1221001",
+      "title": "كشف «الحساب البنكي الرئيسي» = حركة حسابه",
+      "expected": "0.00",
+      "actual": "0.00",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "CASH-MOVEMENT-VS-STATEMENT",
+      "title": "قبض «حركة الصندوق» = وارد «كشف الصندوق» لكل الصناديق",
+      "expected": "249.50",
+      "actual": "100.00",
+      "pass": false,
+      "note": "حركة الصندوق 1 صف"
+    },
+    {
+      "id": "VAT-VS-GL",
+      "title": "صافي الإقرار = رصيد حساب الضريبة",
+      "expected": "-75.0000",
+      "actual": "-75.00",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "CASH-CACHE-1211001",
+      "title": "رصيد موقع «الصندوق الرئيسي» = حركة حسابه",
+      "expected": "187.13",
+      "actual": "75.0000",
+      "pass": false,
+      "note": ""
+    },
+    {
+      "id": "CASH-CACHE-1221001",
+      "title": "رصيد موقع «الحساب البنكي الرئيسي» = حركة حسابه",
+      "expected": "0.00",
+      "actual": "0.0000",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "AUDIT-TRAIL-POSTED-BY",
+      "title": "كل قيد مرحّل يحمل posted_by",
+      "expected": "0 قيد بلا مُرحِّل",
+      "actual": "6 من 6",
+      "pass": false,
+      "note": ""
+    },
+    {
+      "id": "AP-AGING-VS-GL",
+      "title": "إجمالي أعمار الذمم الدائنة = رصيد 22111001",
+      "expected": "874.0000",
+      "actual": "874.00",
+      "pass": true,
+      "note": ""
+    }
+  ]
+}

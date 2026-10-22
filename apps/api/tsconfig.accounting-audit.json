@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": [
+    "test/accounting-audit-regressions.audit.ts",
+    "test/global-setup.ts",
+    "vitest.accounting-audit.config.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

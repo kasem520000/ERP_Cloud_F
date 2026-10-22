@@ -208,7 +208,7 @@ describe('Van load order — batch attribution (§5.1) and valuation basis (§6.
     await withTenantTx(ctx.handle.db, owner.tenantId, async (tx) => {
       await tx.execute(sql`
         INSERT INTO company_profiles (tenant_id, name_ar, tax_no)
-        VALUES (${owner.tenantId}::uuid, 'مخابز الأساس', '300000000000011')
+        VALUES (${owner.tenantId}::uuid, 'مخابز الأساس', '300000000000013')
         ON CONFLICT (tenant_id) DO UPDATE SET name_ar = EXCLUDED.name_ar, tax_no = EXCLUDED.tax_no
       `);
       await tx.execute(sql`

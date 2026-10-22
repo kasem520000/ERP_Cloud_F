@@ -344,6 +344,47 @@ describe('sales posting engine', () => {
   });
 
   /**
+   * 📝 مسودّةٌ تُلغى — كان `void` يرفض غير المرحّل (409 «Only posted invoices can be voided»)
+   * ولا `DELETE` للفواتير أصلاً، فتبقى المسودّة الخاطئة في القائمة إلى الأبد. والتعليقُ في
+   * الخدمة نفسها كان يقول إن ذلك «حبسٌ بلا سبب» ثم يخالفه الشرط. الآن: المسودّة تُلغى بلا
+   * قيدٍ ولا حركةِ مخزون (أثرها صفر)، وترحيلُها بعد الإلغاء مرفوض.
+   */
+  it('voids a draft without any journal or stock movement, and refuses to post it afterwards', async () => {
+    const before = await levelsOf();
+    const created = await api(ctx.server, 'post', '/api/v1/sales/invoices', {
+      token: actor.token,
+      body: {
+        branchId,
+        warehouseId,
+        partyId,
+        lines: [{ itemId, quantity: '2', unitPrice: '50', taxRate: '15' }],
+      },
+    });
+    expect(created.status).toBe(201);
+    const draft = data(created.body) as { id: string; number: string | null };
+
+    const voided = await api(ctx.server, 'post', `/api/v1/sales/invoices/${draft.id}/void`, {
+      token: actor.token,
+      body: { reason: 'مسودّة خاطئة' },
+    });
+    expect(voided.status).toBe(201);
+    expect((data(voided.body) as { status: string }).status).toBe('voided');
+    // لا مخزون تحرّك ولا قيد كُتب: أثرُ المسودّة صفر.
+    expect(await levelsOf()).toBe(before);
+    const journals = await api(ctx.server, 'get', '/api/v1/journal-entries?limit=50', {
+      token: actor.token,
+    });
+    const entries = (journals.body.data ?? journals.body) as Array<{ sourceId?: string | null }>;
+    expect(entries.some((row) => row.sourceId === draft.id)).toBe(false);
+
+    const repost = await api(ctx.server, 'post', `/api/v1/sales/invoices/${draft.id}/post`, {
+      token: actor.token,
+      body: {},
+    });
+    expect(repost.status).toBe(409);
+  });
+
+  /**
    * R2 — سلسلة المستندات لا تُترك معلّقة. الديسكتوب كان يرفض **الإرجاع الثاني**
    * (`isReturned`, `Class/InvoiceOper.cs:812` → «الفاتورة تم إرجاعها سابقاً أو بعض الأصناف»,
    * `frmInvSale.xaml.cs:1702`)، والسحابة تضبط الوجهين: لا إلغاء لفاتورةٍ عليها مستندٌ مشتقّ

@@ -337,6 +337,22 @@ describe('Inventory documents (vouchers, adjustments, transfers)', () => {
     const { id, number } = data(created.body) as { id: string; number: string };
     expect(number).toMatch(/^ADJ-\d{6}$/);
 
+    /**
+     * 📋 DEF-R7-008 — المسودّة تقول الفرق **قبل** الترحيل: دفتريٌّ من الرصيد الرسمي، وفرقٌ
+     * = مجرود − دفتري، وقيمةٌ من تكلفة الصنف. وكانت تعرض «مطابق» و0.00 حتى تُرحَّل.
+     */
+    const draft = await api(ctx.server, 'get', `/api/v1/inventory/adjustments/${id}`, {
+      token: actor.token,
+    });
+    expect(draft.status).toBe(200);
+    const draftLines = (data(draft.body) as {
+      lines: Array<{ expectedQty: string; countedQty: string; varianceQty: string; varianceValue: string }>;
+    }).lines;
+    const before = Number(await levelOf(itemB));
+    expect(Number(draftLines[0]?.expectedQty)).toBe(before);
+    expect(Number(draftLines[0]?.varianceQty)).toBe(counted - before);
+    expect(Number(draftLines[0]?.varianceValue)).not.toBe(0);
+
     const unapproved = await api(ctx.server, 'post', `/api/v1/inventory/adjustments/${id}/post`, {
       token: actor.token,
       body: {},

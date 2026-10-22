@@ -1,0 +1,176 @@
+[
+  [
+    {
+      "number": "SI-000001",
+      "kind": "sale",
+      "status": "posted",
+      "total": "149.5000",
+      "cost_total": "0.0000",
+      "profit": "0.0000",
+      "has_ref": false
+    },
+    {
+      "number": "SI-000002",
+      "kind": "sale",
+      "status": "posted",
+      "total": "186.8750",
+      "cost_total": "0.0000",
+      "profit": "0.0000",
+      "has_ref": false
+    },
+    {
+      "number": "SR-000001",
+      "kind": "sale_return",
+      "status": "posted",
+      "total": "37.3750",
+      "cost_total": "0.0000",
+      "profit": "0.0000",
+      "has_ref": true
+    }
+  ],
+  [
+    {
+      "number": "PI-000001",
+      "kind": "purchase",
+      "status": "posted",
+      "total": "874.0000"
+    }
+  ],
+  [
+    {
+      "code": "1211001",
+      "name_ar": "الصندوق الرئيسي",
+      "net": "187.125"
+    },
+    {
+      "code": "12310001",
+      "name_ar": "عميل عام",
+      "net": "86.875"
+    },
+    {
+      "code": "1270001",
+      "name_ar": "حساب بضاعة آخر المدة",
+      "net": "608.000"
+    },
+    {
+      "code": "22111001",
+      "name_ar": "مورد عام",
+      "net": "-874.000"
+    },
+    {
+      "code": "2222001",
+      "name_ar": "ضريبة القيمة المضافة",
+      "net": "75.000"
+    },
+    {
+      "code": "3130002",
+      "name_ar": "فواتير كهرباء",
+      "net": "25.000"
+    },
+    {
+      "code": "3200004",
+      "name_ar": "تكلفة المبيعات",
+      "net": "152.000"
+    },
+    {
+      "code": "4100001",
+      "name_ar": "المبيعات",
+      "net": "-292.500"
+    },
+    {
+      "code": "4100002",
+      "name_ar": "مردودات المبيعات",
+      "net": "32.500"
+    }
+  ],
+  [
+    {
+      "sku": "R8-BREAD",
+      "qty": "60.000",
+      "val": "228.000"
+    },
+    {
+      "sku": "R8-FLOUR",
+      "qty": "100.000",
+      "val": "380.000"
+    }
+  ],
+  [
+    {
+      "kind": "payment",
+      "number": "PV-000001",
+      "amount": "25.0000",
+      "status": "posted",
+      "method": "cash"
+    },
+    {
+      "kind": "receipt",
+      "number": "RV-000001",
+      "amount": "100.0000",
+      "status": "posted",
+      "method": "cash"
+    },
+    {
+      "kind": "receipt",
+      "number": null,
+      "amount": "10.0000",
+      "status": "draft",
+      "method": "cash"
+    }
+  ],
+  [
+    {
+      "cash_location_id": "01a160ef-1adb-760e-a271-95c05814ae66",
+      "currency_code": "SAR",
+      "bal": "75.000"
+    },
+    {
+      "cash_location_id": "01a160ef-1adc-7321-aecc-9c474c15b1ea",
+      "currency_code": "SAR",
+      "bal": "0.000"
+    }
+  ],
+  [
+    {
+      "number": "JE-000001",
+      "source_type": "purchase_invoice",
+      "posted_by_null": true,
+      "diff": "0.000"
+    },
+    {
+      "number": "JE-000002",
+      "source_type": "sales_invoice",
+      "posted_by_null": true,
+      "diff": "0.000"
+    },
+    {
+      "number": "JE-000003",
+      "source_type": "sales_invoice",
+      "posted_by_null": true,
+      "diff": "0.000"
+    },
+    {
+      "number": "JE-000004",
+      "source_type": "sales_invoice",
+      "posted_by_null": true,
+      "diff": "0.000"
+    },
+    {
+      "number": "JE-000005",
+      "source_type": "voucher",
+      "posted_by_null": true,
+      "diff": "0.000"
+    },
+    {
+      "number": "JE-000006",
+      "source_type": "voucher",
+      "posted_by_null": true,
+      "diff": "0.000"
+    }
+  ],
+  [
+    {
+      "trial": "0.000"
+    }
+  ]
+]

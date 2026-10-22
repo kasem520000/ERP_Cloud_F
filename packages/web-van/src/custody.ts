@@ -519,6 +519,12 @@ export const CHARGE_BASES = [
   'load_order_unit_cost',
   /** تكلفةُ مستندات الأمر — ملاذُ سياسة «التكلفة» لأمرٍ بلا صنف (ولا سعرَ بيعٍ عندها). */
   'document_unit_cost',
+  /**
+   * 🔧 DEF-R7-009 — التكلفةُ حين لم تُضبط سياسة التقييم بعد. يُميَّز عن `unit_cost` لأن الرقم
+   * واحد (`shortage_value` = قيمة الشطب) وأمّا القرار فلم يُتّخذ: الشاشة تقول ذلك صراحةً ولا
+   * تُوهم أنّ سياسةً مُعتمدة وراءه.
+   */
+  'unconfigured_cost',
 ] as const;
 export type ChargeBasis = (typeof CHARGE_BASES)[number];
 
@@ -532,6 +538,7 @@ export const CHARGE_BASIS_LABELS: Record<ChargeBasis, string> = {
   loaded_average: 'متوسط قيمة الحمولة',
   load_order_unit_cost: 'تكلفة أمر التحميل',
   document_unit_cost: 'تكلفةُ مستندات الأمر (أمرٌ بلا صنفٍ في بطاقته)',
+  unconfigured_cost: 'التكلفة — وسياسةُ تقييم العجز لم تُضبط بعد',
 };
 
 export function chargeBasisLabel(basis: string | null | undefined): string {

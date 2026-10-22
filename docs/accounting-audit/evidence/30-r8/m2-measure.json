@@ -1,0 +1,39 @@
+{
+  "measuredAt": "2026-10-22T02:21:43.005Z",
+  "tenant": "AUDIT-TEST-2026-R8",
+  "predictions": {
+    "DEF-R7-007-policy": "GET /van-sales/policy ⇒ zatcaSeller.ready=false، missingFields=[]، invalidFields=[«الرقم الضريبي»]، refusalDetail يذكر «١٥ رقمًا»",
+    "DEF-R7-007-scope": "لا أمرَ تحميلٍ مُستلَمًا في المنشأة ⇒ الرفضُ ومسارُ النجاح يُقاسان في بيئةٍ معزولة، ويُعلن ذلك"
+  },
+  "checks": {
+    "DEF-R7-007-policy": {
+      "what": "شاشةُ السياسة تُميّز «غير مُدخل» من «لا يطابق الصيغة» — قراءةٌ بلا كتابة",
+      "before": "R7: ready=true لرقمٍ نصّيّ غير رقميّ (وجودٌ فقط)",
+      "response": {
+        "status": 200,
+        "ready": false,
+        "missingFields": [],
+        "invalidFields": [
+          "الرقم الضريبي"
+        ],
+        "refusalDetailMentions15": true
+      },
+      "passed": true
+    },
+    "DEF-R7-007-live-scope": {
+      "what": "ما قِيس حيًّا وما لم يُقَس حيًّا ولماذا",
+      "live": [
+        "سياسةُ البائع: invalidFields=[«الرقم الضريبي»] وجملةُ الرفض تذكر صيغة الهيئة (١٥ رقمًا)",
+        "رقمُ المنشأة في company_profiles = AUDIT-NOT-A-VALID-TAX-NUMBER (مقروءٌ من القاعدة)"
+      ],
+      "isolated": {
+        "file": "apps/api/test/van-sales-zatca-seller.spec.ts",
+        "refusal": "422 VAN_ZATCA_SELLER_IDENTITY_REQUIRED + errors[0].field=taxNo، والعدّادات قبل/بعد متساوية",
+        "success": "201 ثم sales_invoices.zatca_status='qr_only'، zatca_uuid=NULL، phase=phase1_qr في القائمة والطباعة"
+      },
+      "reason": "حارسُ الهوية يقع بعد قراءة أمر التحميل؛ ولا أمرَ مُستلَمًا في هذه المنشأة، وإصدارُه يكتب حركةَ مخزونٍ وقيدًا يغيّر أرقام التدقيق",
+      "loadOrdersInTenant": 0,
+      "summaryUnchanged": true
+    }
+  }
+}

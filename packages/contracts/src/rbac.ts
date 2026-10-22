@@ -418,6 +418,9 @@ export const erpFunctionalRoleCatalog: readonly RoleCatalogEntry[] = [
       'sales.invoice.post',
       'sales.invoice.void',
       'sales.adjustment.create',
+      /** 🚐 DEF-R7-003 — اعتمادُ إغلاق عهدة المندوب (صراحةً، لا استنتاجاً من `sales.*`). */
+      'van_sales.view',
+      'van_sales.closing.approve',
       'approval.approve',
       'purchase.view',
       'purchase.invoice.create',

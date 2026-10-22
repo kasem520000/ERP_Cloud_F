@@ -304,7 +304,7 @@ describe('Van Sales — stock & custody settlement against the official ledger',
        */
       await tx.execute(sql`
         INSERT INTO company_profiles (tenant_id, name_ar, tax_no)
-        VALUES (${owner.tenantId}::uuid, 'مخابز التثبيت', '310000000000001')
+        VALUES (${owner.tenantId}::uuid, 'مخابز التثبيت', '310000000000013')
         ON CONFLICT (tenant_id) DO UPDATE SET name_ar = EXCLUDED.name_ar, tax_no = EXCLUDED.tax_no
       `);
       await tx.execute(sql`
@@ -437,11 +437,11 @@ describe('Van Sales — stock & custody settlement against the official ledger',
     const adjustment = await adjustmentRow(row.stock_adjustment_id!);
     expect(adjustment.status).toBe('draft');
     expect(Number(adjustment.counted_qty)).toBeCloseTo(0.5, 4);
-    // ⚠️ المحرك الرسمي يكتب `expected_qty` لحظة الترحيل لا لحظة الإنشاء (`createAdjustment`
-    //    يضع expectedQty: '0'): فالمسودة تحمل العدّ وحده، ودليل الفرق قبل التفويض يبقى على
-    //    أمر التحميل وفي سبب المستند — وهذا ما يُظهره التقرير للمحاسب قبل أن يفوّض.
-    expect(Number(adjustment.expected_qty)).toBe(0);
-    expect(adjustment.variance_qty === null || Number(adjustment.variance_qty) === 0).toBe(true);
+    // 🧾 DEF-R7-008 (م1): المسودّة **تحمل الفرق** — يُقرأ الرصيد الرسمي عند الإنشاء فتُكتب
+    //    `expected_qty` ويُحسب `variance_qty`؛ وكانت تُكتب صفراً فتُعلن المسودّة «مطابق» وهي
+    //    ليست كذلك. والترحيل يبقى الحاكم: يعيد الحساب من الدفتر لحظة الترحيل.
+    expect(Number(adjustment.expected_qty)).toBe(1); // ما زال في السيارة: 0.5 موجود + 0.5 مفقود
+    expect(Number(adjustment.variance_qty)).toBeCloseTo(-0.5, 4); // 0.5 مجرود − 1 دفتري
     expect(adjustment.reason).toContain('المتوقع 1.00 مقابل الفعلي 0.50');
 
     // 1) الكمية لم تُسوَّ بعد: رصيد السيارة ما زال 1 كجم (0.5 موجود + 0.5 مفقود).

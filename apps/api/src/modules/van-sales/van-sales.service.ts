@@ -15,6 +15,7 @@ import { withTenantTx, type DatabaseHandle, type DrizzleTx } from '@erp/database
 import { DATABASE_HANDLE } from '../../database/database.module.js';
 import { AccountingService } from '../accounting/accounting.service.js';
 import { buildQrPayload } from '../einvoicing/zatca/qr.js';
+import { isValidSellerVat } from '../einvoicing/zatca/validation.js';
 import { InventoryService } from '../inventory/inventory.service.js';
 import { ProductionOrdersService } from '../inventory/production-orders.service.js';
 import { WmsBomService } from '../inventory/wms-bom.service.js';
@@ -85,7 +86,18 @@ export type ShortageChargeBasis =
   | 'item_sale_price'
   | 'item_purchase_price'
   | 'loaded_average'
-  | 'load_order_unit_cost';
+  | 'load_order_unit_cost'
+  /**
+   * 🔧 DEF-R7-009 — التكلفةُ حين **لم تُضبط سياسة تقييم العجز** بعد (‏`unconfigured`).
+   *
+   * كان الأساس غير المضبوط يسقط إلى **سعر البيع** (متوسط أسعار مستندات الأمر ثم سعر الصنف)،
+   * فيُكتب على الأمر `shortage_value = 32.50` بينما قيدُ الشطب يحمل **التكلفة** ‏19.00 لنفس
+   * 5 كجم — رقمان لعجزٍ واحد، وفرقُ 13.50 بلا سند. والخسارةُ مخزونٌ نقص، فقيمتُها في الدفاتر
+   * تكلفتُه؛ وسعرُ البيع يُدخل هامشاً لم يُتحقّق. فصار غيرُ المضبوط يُقيَّم بالتكلفة **ويُسمّى
+   * باسمه** في الشاشة (`CHARGE_BASIS_LABELS`)، وتبقى الحالة `pending_policy_approval` كي
+   * يعرف المحاسب أنّ القرار لم يُتّخذ. والأساسُ نصٌّ بلا قيد في القاعدة (`0128:34`) فلا هجرة.
+   */
+  | 'unconfigured_cost';
 
 export type VanSalesTenantPolicy = {
   allowInternalDeliveryWithoutTax?: boolean;
@@ -318,8 +330,9 @@ export class VanSalesService {
    * سيقوله الخادم حرفًا لأنّ الخادمَ هو الذي أملاها عليها، والحكمُ يبقى في الخادم وحده
    * (فإخفاءُ الزرّ ليس ضبطًا).
    *
-   * والتحقّقُ من **وجود** الاسم والرقم لا من صحّة صيغة الرقم (١٥ رقمًا وما تشترطه الهيئة) —
-   * فصحّةُ الصيغة قرارٌ ضريبيٌّ يُرفع لصاحب العمل، وأمّا الفراغُ فليس قرارًا.
+   * والتحقّقُ من **وجود** الاسم والرقم **ومن صيغة الرقم** معًا — DEF-R7-007 (م2):
+   * وجودٌ بلا صيغةٍ صحيحة يُصدر رمزًا برقمٍ لا يُسجَّل في أيّ نظام، وقد قِيس ذلك في R7.
+   * والفحصُ شكليّ (BR-KSA-44)، لا تحقّقٌ من تسجيلٍ فعليّ لدى الهيئة.
    */
   private async resolveZatcaSellerInTx(
     tx: DrizzleTx,
@@ -328,6 +341,8 @@ export class VanSalesService {
     sellerName: string;
     vatNumber: string;
     missingFields: string[];
+    /** حقولٌ مُدخلة لكنها لا تطابق صيغة الهيئة (BR-KSA-44). */
+    invalidFields: string[];
     refusalAr: string | null;
   }> {
     const profile = first(
@@ -343,14 +358,81 @@ export class VanSalesService {
       ...(sellerName ? [] : ['اسم المنشأة']),
       ...(vatNumber ? [] : ['الرقم الضريبي']),
     ];
+    /**
+     * 🧾 **صيغة الرقم الضريبي** — DEF-R7-007، الجزء الأول.
+     *
+     * كان الحارس يفحص **الوجود** فقط، وقِيس في R7 أن رقمًا مثل
+     * `AUDIT-NOT-A-VALID-TAX-NUMBER` يمرّ فتُصدر «فاتورة ضريبية إلكترونية» به. والرقم الذي
+     * تُبنى به حمولة QR يُقرأ آليًّا عند الهيئة وعند عميلٍ يفحص الرمز، فليس موضعُه موضعَ
+     * نصٍّ حرّ: القاعدة BR-KSA-44 تطلب ١٥ رقمًا يبدأ وينتهي بالرقم ٣.
+     *
+     * وما زال الفحص **شكليًّا** لا تحقّقًا من تسجيلٍ فعليّ لدى الهيئة (ذاك يحتاج تكاملًا
+     * حيًّا ورقمًا حقيقيًّا، ولا يُدّعى هنا). لكن رقمًا لا يصلح أصلًا للصيغة لا يُصدر به مستند.
+     */
+    const invalidFields: string[] = [];
+    if (vatNumber && !isValidSellerVat(vatNumber)) invalidFields.push('الرقم الضريبي');
+    const missingPart =
+      missingFields.length > 0
+        ? `${missingFields.join(' و')} غير مُدخلٍ في بيانات المنشأة`
+        : null;
+    const invalidPart =
+      invalidFields.length > 0
+        ? `الرقم الضريبي المُدخل لا يطابق صيغة الهيئة: يجب أن يكون ١٥ رقمًا يبدأ وينتهي بالرقم ٣ (BR-KSA-44)`
+        : null;
     return {
       sellerName,
       vatNumber,
       missingFields,
-      refusalAr:
-        missingFields.length > 0
-          ? `لا يمكن إصدار فاتورة ضريبية (ZATCA) وهويّةُ البائع ناقصة: ${missingFields.join(' و')} غير مُدخلٍ في بيانات المنشأة. فأدخله هناك أولًا، أو أصدر المستند بوضع إشعار التسليم الداخلي إن كانت سياستُه معتمدة. ولا يُستعاض عنه باسمٍ أو رقمٍ بديل: فرقمُ ضريبةٍ ليس للمنشأة في رمزٍ على فاتورة عميلٍ خطأُ امتثالٍ لا خطأُ عرض.`
-          : null,
+      invalidFields,
+      refusalAr: missingPart || invalidPart
+        ? `لا يمكن إصدار فاتورة ضريبية (ZATCA) وهويّةُ البائع غير صالحة: ${[missingPart, invalidPart]
+            .filter(Boolean)
+            .join('، و')}. صحّحها في بيانات المنشأة أولًا، أو أصدر المستند بوضع إشعار التسليم الداخلي إن كانت سياستُه معتمدة. ولا يُستعاض عنه باسمٍ أو رقمٍ بديل: فرقمُ ضريبةٍ ليس للمنشأة — أو لا يطابق صيغتَها — في رمزٍ على فاتورة عميلٍ خطأُ امتثالٍ لا خطأُ عرض.`
+        : null,
+    };
+  }
+
+  /**
+   * 🧾 حالةُ الامتثال **كما هي**، لا كما يُوحي اسمُ الزر — DEF-R7-007.
+   *
+   * ثلاثةُ أوضاع لا رابع:
+   *   • `none` — إشعار تسليم داخليّ: ليس فاتورةً ضريبية ولا يُرسل للهيئة أصلًا.
+   *   • `phase1_qr` — فاتورةٌ ضريبية تحمل رمزَ المرحلة الأولى (TLV) فقط: **لم تُرسل**، ولا
+   *     UUID ولا تسلسل. وهذا حالُ مستندات التوزيع اليوم، ويُقال صريحًا في الشاشة.
+   *   • `phase2_submitted` — للفاتورة UUID/توقيع/حالة من وحدة الفوترة الإلكترونية.
+   *
+   * والحكمُ يُقرأ من الفاتورة الرسمية (`zatca_status`/`zatca_uuid`) لا من نيّة الشاشة.
+   */
+  private zatcaCompliance(
+    invoiceMode: string,
+    status: string | null,
+    uuid: string | null,
+  ): {
+    phase: 'none' | 'phase1_qr' | 'phase2_submitted';
+    submitted: boolean;
+    status: string | null;
+    uuid: string | null;
+    noteAr: string;
+  } {
+    if (invoiceMode !== 'zatca_tax') {
+      return {
+        phase: 'none',
+        submitted: false,
+        status: null,
+        uuid: null,
+        noteAr: 'إشعار تسليم داخليّ — ليس فاتورةً ضريبية، ولا يُرسل إلى هيئة الزكاة.',
+      };
+    }
+    const submitted =
+      Boolean(uuid) || ['signed', 'reported', 'cleared'].includes(String(status ?? ''));
+    return {
+      phase: submitted ? 'phase2_submitted' : 'phase1_qr',
+      submitted,
+      status,
+      uuid,
+      noteAr: submitted
+        ? 'فاتورة ضريبية موقّعة/مُرسلة إلكترونيًّا — لها أثرٌ لدى الهيئة.'
+        : 'رمز QR للمرحلة الأولى فقط: لم تُرسل هذه الفاتورة إلى هيئة الزكاة بعد، ولا UUID ولا تسلسل. للإرسال: الإعدادات ← ZATCA ← «مزامنة الفواتير» (تلزم شهادة CSID).',
     };
   }
 
@@ -439,10 +521,21 @@ export class VanSalesService {
         zatcaSeller: {
           ready: seller.refusalAr === null,
           missingFields: seller.missingFields,
+          /** حقولٌ مُدخلة لكنها لا تطابق صيغة الهيئة (‏BR-KSA-44: ١٥ رقمًا تبدأ وتنتهي بـ٣). */
+          invalidFields: seller.invalidFields,
           refusalDetail: seller.refusalAr,
         },
-        /** ما سيحدث فعلاً عند الاعتماد — لا ما تقوله السياسة وحدها. */
-        valuationSource: explicitPrice ? 'explicit_policy_price' : basis,
+        /**
+         * ما سيحدث فعلاً عند الاعتماد — لا ما تقوله السياسة وحدها.
+         *
+         * DEF-R7-009 — والسياسةُ غير المضبوطة صارت تُقيَّم **بالتكلفة** (كقيمة الشطب في
+         * الدفاتر) لا بسعر البيع، فيُعلَن ذلك باسمه هنا بدل `unconfigured` المبهم.
+         */
+        valuationSource: explicitPrice
+          ? 'explicit_policy_price'
+          : basis === 'unconfigured'
+            ? 'unconfigured_cost'
+            : basis,
         configured: basis !== 'unconfigured' || Boolean(explicitPrice),
         /** المفاتيح التي تكتبها `PUT /van-sales/policy` — وما عداها قراره في مكانٍ آخر. */
         writableKeys: ['shortageValuationBasis', 'shortageUnitPrice', 'preventSelfApproval'],
@@ -1408,6 +1501,10 @@ export class VanSalesService {
                  (SELECT sal.expected_qty::text FROM stock_adjustment_lines sal
                    WHERE sal.adjustment_id = l.stock_adjustment_id
                    ORDER BY sal.line_no ASC LIMIT 1) AS count_document_expected_qty,
+                 /** 🧾 حالةُ مستند الجرد نفسِه — لا استنتاجها من أصفار الأعمدة. */
+                 (SELECT sa.status FROM stock_adjustments sa
+                   WHERE sa.id = l.stock_adjustment_id
+                     AND sa.tenant_id = l.tenant_id) AS count_document_status,
                  l.max_bonus_qty::text, l.max_bonus_pct::text,
                  l.expected_cash::text, l.collected_cash::text,
                  l.damage_reason, l.damage_inspected, l.salary_deduction_approved,
@@ -1528,6 +1625,7 @@ export class VanSalesService {
                  d.sales_invoice_id::text, d.receipt_voucher_id::text, d.stock_delivery_id::text,
                  d.document_kind, d.reference_document_id::text,
                  si.number AS invoice_number, si.status AS invoice_status,
+                 si.zatca_status AS invoice_zatca_status, si.zatca_uuid::text AS invoice_zatca_uuid,
                  si.paid_total::text AS invoice_paid_total,
                  d.salesman_id::text, COALESCE(s.name, 'مندوب') AS salesman_name,
                  d.party_id::text, COALESCE(p.name, d.customer_name, 'عميل توزيع') AS customer_name,
@@ -1837,13 +1935,12 @@ export class VanSalesService {
         repPerformance,
         loadOrders: loadOrders.map((row) => {
           /**
-           * هل مستند الجرد الرسمي **مُرحَّل**؟ المحرك يكتب `expected_qty` و`variance_value`
-           * لحظة الترحيل لا لحظة الإنشاء (المسودة تحمل `0` في العمودين)، فالصفران يعنيان
-           * «لم يُرحَّل بعد» — وتُحسب قيمة الفرق عندها من تكلفة الدفعة على أمر التحميل.
+           * هل مستند الجرد الرسمي **مُرحَّل**؟ يُقرأ من حالته (`stock_adjustments.status`)
+           * لا من أصفار أعمدته. وكان الاستنتاجُ من الأصفار صحيحاً حين كانت المسودّة لا تحمل
+           * فرقها؛ فلمّا صارت تحمله (DEF-R7-008/م1) صار كلُّ مسودّةٍ «مُرحَّلة» في نظر الشاشة،
+           * فتُعرض قيمتُها كأنها مرّت في الدفتر — وهذا خطأٌ في الاتجاه المعاكس.
            */
-          const countDocumentPosted =
-            dec(row.count_document_expected_qty).gt(0) ||
-            dec(row.count_document_variance_value).gt(0);
+          const countDocumentPosted = str(row.count_document_status ?? '') === 'posted';
           const loaded = dec(row.loaded_qty);
           /**
            * أساس العهدة — what the rep confirmed he received. Before confirmation the
@@ -1953,11 +2050,17 @@ export class VanSalesService {
              * `shortageChargeBasis` لأنّ «بكم حُوسب» جزءٌ من الدليل.
              */
             countVarianceCostValue: (countDocumentPosted
-              ? dec(row.count_document_variance_value)
+              ? dec(row.count_document_variance_value).abs()
               : dec(row.unit_cost).mul(countVariance.abs())
             ).toFixed(2),
+            /**
+             * 💵 قيمةُ فرق مستند الجرد — **بالقيمة المطلقة** كالكمية تحته: الاتجاه يقوله
+             * `countVarianceQty` («عجز» أو «فائض»)، والرقمُ هنا مقدارُ التسوية المخزنية.
+             * وكان يمرّ بإشارته (`0.5 − 1 = −2.00`) فيُقرأ سالباً أمام كلمة «عجز» — تناقضٌ
+             * في السطر نفسه بعد أن صارت المسودّة تحمل فرقها (DEF-R7-008/م1).
+             */
             countDocumentVarianceValue: countDocumentPosted
-              ? dec(row.count_document_variance_value).toFixed(2)
+              ? dec(row.count_document_variance_value).abs().toFixed(2)
               : null,
             /** الكمية لا القيمة — تُعرض جنباً إلى جنب مع فرق الاعتماد لكشف ما امتصّه المستند. */
             countDocumentVarianceQty: countDocumentPosted
@@ -2036,6 +2139,12 @@ export class VanSalesService {
           /** رقم وحالة الفاتورة الرسمية — ما يعرفه المحاسب وهيئة الزكاة. */
           invoiceNumber: row.invoice_number ? str(row.invoice_number) : null,
           invoiceStatus: row.invoice_status ? str(row.invoice_status) : null,
+          /** 🧾 ما تحقّق فعلًا لدى الهيئة — لا ما يعد به اسم الزر (DEF-R7-007). */
+          zatcaCompliance: this.zatcaCompliance(
+            str(row.invoice_mode),
+            row.invoice_zatca_status ? str(row.invoice_zatca_status) : null,
+            row.invoice_zatca_uuid ? str(row.invoice_zatca_uuid) : null,
+          ),
           productionBatchNo: str(row.production_batch_no),
           loadOrderId: row.load_order_id ? str(row.load_order_id) : null,
           salesInvoiceId: row.sales_invoice_id ? str(row.sales_invoice_id) : null,
@@ -4580,8 +4689,14 @@ export class VanSalesService {
        * والرفضُ **قبل أيّ كتابة**: فلا مستندَ ولا فاتورةَ رسميةً ولا حركةَ مخزون ولا قيدَ
        * وراءه، والحرسُ هنا في موضع حارس السياسة نفسه للسبب نفسه.
        *
-       * والتحقّقُ من **وجود** الرقم لا من صحّة صيغته (١٥ رقمًا وما تشترطه الهيئة) — فصحّةُ
-       * الصيغة قرارٌ ضريبيٌّ آخر يُرفع لصاحب العمل، وأمّا الرقمُ الفارغ فليس قرارًا.
+       * ~~والتحقّقُ من **وجود** الرقم لا من صحّة صيغته~~ — هذا كان قرارَ R7، وقد نقضه القياس:
+       * رقمٌ نصّيّ مثل `AUDIT-NOT-A-VALID-TAX-NUMBER` مرّ وأصدر «فاتورةً ضريبية» برمزٍ يحمل
+       * رقمًا لا يُسجَّل في أيّ نظام. والآن يُفحص **الوجودُ والصيغةُ** معًا بالمُحقِّق الرسميّ
+       * (`isValidSellerVat` — BR-KSA-44: ١٥ رقمًا تبدأ وتنتهي بـ٣)، والرفضُ يسمّي الحقل
+       * ويُبيّن أيَّهما نقص: غير مُدخل، أم لا يطابق الصيغة.
+       *
+       * وحدُّ هذا الفحص يُقال صريحًا: **صيغةٌ لا تسجيلٌ فعليّ**. التحقّقُ من أنّ الرقم مسجَّلٌ
+       * لدى الهيئة يحتاج تكاملًا حيًّا بشهادة CSID ورقمًا حقيقيًّا — ولا يُدّعى هنا أكثر مما قِيس.
        */
       if (invoiceMode === 'zatca_tax' && zatcaSeller.refusalAr)
         throw new DomainError(
@@ -4844,6 +4959,11 @@ export class VanSalesService {
            * الصندوق وحسابه — a cash sale debits the till's own account, and that account
            * must come from a real cash location (never from a guess). The rep's cash box is
            * the one named on the request; otherwise the branch's default safe.
+           *
+           * 🌐 DEF-R7-010 — والبطاقةُ ليست نقداً: تحصيلُ «الشبكة» لا يُقيَّد على صندوق النقد،
+           * فالبحث عن موقعٍ لبطاقةٍ محصورٌ في `kind = 'bank'`، وإن لم يوجد موقعُ بنكٍ رجعنا إلى
+           * حساب البنك في ملف الترحيل، وإن غاب الاثنان رُفض الطلب 422 — ولم يُكتب مالٌ في درجٍ
+           * لم يدخله. (قياس R7: `VTX-00002` بطريقة card ⇒ Dr 1211001 الصندوق الرئيسي 112.125.)
            */
           const cashLocationRow =
             settlementMethod === 'credit'
@@ -4855,6 +4975,7 @@ export class VanSalesService {
                       AND (${body.cashLocationId ?? null}::uuid IS NULL
                            OR id = ${body.cashLocationId ?? null}::uuid)
                       AND (${resolvedBranchId}::uuid IS NULL OR branch_id = ${resolvedBranchId}::uuid)
+                      AND (${settlementMethod} <> 'card' OR kind = 'bank')
                       AND is_active = true AND deleted_at IS NULL
                     ORDER BY (id = ${body.cashLocationId ?? null}::uuid) DESC NULLS LAST,
                              is_default DESC NULLS LAST, created_at ASC
@@ -4872,13 +4993,15 @@ export class VanSalesService {
               ? undefined
               : (cashLocationRow?.account_id
                 ? str(cashLocationRow.account_id)
-                : (salesProfile?.[settlementMethod === 'card' ? 'bankAccountId' : 'cashAccountId'] ??
-                  salesProfile?.cashAccountId ??
-                  undefined));
+                : settlementMethod === 'card'
+                  ? (salesProfile?.bankAccountId ?? undefined)
+                  : (salesProfile?.cashAccountId ?? undefined));
           if (settlementMethod !== 'credit' && !settlementAccountId) {
             throw new DomainError(
               errorCodes.VALIDATION_FAILED,
-              'بيع نقدي يتطلّب صندوقًا مرتبطًا بحساب محاسبي — أنشئ صندوقًا من شاشة مواقع النقد أو حدّد حساب النقد في ملف الترحيل',
+              settlementMethod === 'card'
+                ? 'تحصيل «الشبكة» يتطلّب حساب بنك: أنشئ موقعاً نقدياً من نوع «بنك» أو اربط حساب البنك في ملف الترحيل — ولا يُقبل صندوق نقد لتحصيلٍ لم يدخل الدرج'
+                : 'بيع نقدي يتطلّب صندوقًا مرتبطًا بحساب محاسبي — أنشئ صندوقًا من شاشة مواقع النقد أو حدّد حساب النقد في ملف الترحيل',
               422,
               { field: 'cashLocationId' },
             );
@@ -4892,6 +5015,26 @@ export class VanSalesService {
                 : str(cashLocationRow.id),
           });
           linkedSalesInvoiceNumber = posted?.number ? str(posted.number) : null;
+          /**
+           * 🧾 **حالةُ الامتثال الصادقة** — DEF-R7-007، الجزء الثاني.
+           *
+           * مستندٌ ضريبيّ يُنشئ فاتورةً رسميةً مرحّلة، لكن إرسالها إلى «فاتورة» (ZATCA)
+           * مسارٌ آخر (`POST /einvoicing/submissions`) يحتاج شهادة CSID وتوقيعًا وتسلسلًا.
+           * وما كان: تبقى `zatca_status` فارغةً ويُسمّى المستند في الشاشة «فاتورة ضريبية
+           * إلكترونية» — أي وعدٌ بالامتثال لم يُنفَّذ. والآن تُكتب الحالة صريحةً
+           * `qr_only` (رمزُ المرحلة الأولى فقط، ولم تُرسل)، فلا تُقرأ الفاتورة كمرسلة.
+           *
+           * والكتابةُ مشروطةٌ بالفراغ: لو رُحّل المستند في منشأةٍ تُرسل تلقائيًّا ووصلت
+           * الحالة من وحدة الفوترة الإلكترونية في اللحظة نفسها، لا نطمسها.
+           */
+          if (invoiceMode === 'zatca_tax' && linkedSalesInvoiceId) {
+            await tx.execute(sql`
+              UPDATE sales_invoices
+              SET zatca_status = 'qr_only', updated_at = now()
+              WHERE id = ${linkedSalesInvoiceId}::uuid AND tenant_id = ${tenantId}::uuid
+                AND zatca_status IS NULL AND zatca_uuid IS NULL
+            `);
+          }
         }
       }
 
@@ -5039,9 +5182,17 @@ export class VanSalesService {
     if (policy.shortageUnitPrice && dec(policy.shortageUnitPrice).gt(0)) {
       return { price: dec(policy.shortageUnitPrice), basis: 'explicit_policy_price' };
     }
-    if (policy.shortageValuationBasis === 'unit_cost') {
+    /**
+     * DEF-R7-009 — «بالتكلفة» **و»غير مضبوطة»** يسلكان السلسلة نفسها: خسارةُ العجز نقصُ مخزون،
+     * فقيمتُها تكلفتُه. والفرق بينهما في **التسمية** لا في الرقم: `unconfigured_cost` تقول
+     * للمحاسب «هذه تكلفة، لكن قرار التقييم لم يُتّخذ بعد».
+     */
+    const costValuation = policy.shortageValuationBasis !== 'selling_price';
+    const costBasis: ShortageChargeBasis =
+      policy.shortageValuationBasis === 'unit_cost' ? 'unit_cost' : 'unconfigured_cost';
+    if (costValuation) {
       if (dec(loadOrder.unit_cost).gt(0)) {
-        return { price: dec(loadOrder.unit_cost), basis: 'unit_cost' };
+        return { price: dec(loadOrder.unit_cost), basis: costBasis };
       }
       // ⚠️ أمرٌ بلا دفعة إنتاج لا يحمل تكلفةً: `van_load_orders.unit_cost` مصدرها الدفعة وحدها
       // (`plan.batchUnitCost`)، فقرار المالك «التقييم بالتكلفة» كان سينقلب **سعرَ بيع** لو تُركت
@@ -7469,6 +7620,7 @@ export class VanSalesService {
                  d.payment_method, d.sold_qty::text, d.bonus_qty::text, d.unit_price::text,
                  d.subtotal::text, d.tax_total::text, d.total::text, d.paid_amount::text,
                  d.sales_invoice_id::text, si.number AS invoice_number, si.status AS invoice_status,
+                 si.zatca_status AS invoice_zatca_status, si.zatca_uuid::text AS invoice_zatca_uuid,
                  COALESCE(p.name, d.customer_name, 'عميل نقدي') AS customer_name,
                  COALESCE(i.name_ar, 'صنف') AS item_name
           FROM van_sales_documents d
@@ -7664,6 +7816,12 @@ export class VanSalesService {
           salesInvoiceId: row.sales_invoice_id ? str(row.sales_invoice_id) : null,
           invoiceNumber: row.invoice_number ? str(row.invoice_number) : null,
           invoiceStatus: row.invoice_status ? str(row.invoice_status) : null,
+          /** 🧾 حالةُ الامتثال — DEF-R7-007 (تُقرأ من الفاتورة الرسمية لا من الشاشة). */
+          zatcaCompliance: this.zatcaCompliance(
+            str(row.invoice_mode),
+            row.invoice_zatca_status ? str(row.invoice_zatca_status) : null,
+            row.invoice_zatca_uuid ? str(row.invoice_zatca_uuid) : null,
+          ),
         })),
         collections: collections.map((row) => ({
           id: str(row.id),
@@ -7765,6 +7923,7 @@ export class VanSalesService {
       const doc = first(
         await tx.execute(sql`
           SELECT d.*, si.number AS invoice_number, si.status AS invoice_status,
+                 si.zatca_status AS invoice_zatca_status, si.zatca_uuid::text AS invoice_zatca_uuid,
                  si.total::text AS invoice_total, si.paid_total::text AS invoice_paid,
                  COALESCE(p.name, d.customer_name, 'عميل نقدي') AS customer_name_resolved,
                  p.tax_no AS customer_tax_no_resolved, p.phone AS customer_phone,
@@ -7833,6 +7992,12 @@ export class VanSalesService {
         /** رقم الفاتورة الرسمية — the number the accountant and ZATCA know. */
         invoiceNumber: doc.invoice_number ? str(doc.invoice_number) : null,
         invoiceStatus: doc.invoice_status ? str(doc.invoice_status) : null,
+        /** 🧾 تُطبع الحالة مع المستند: مستندٌ لم يُرسل لا يُطبع كأنه مُرسل. */
+        zatcaCompliance: this.zatcaCompliance(
+          str(doc.invoice_mode),
+          doc.invoice_zatca_status ? str(doc.invoice_zatca_status) : null,
+          doc.invoice_zatca_uuid ? str(doc.invoice_zatca_uuid) : null,
+        ),
         saleDate: str(doc.doc_date),
         companyName: str(company?.name_ar ?? ''),
         companyNameEn: str(company?.name_en ?? ''),

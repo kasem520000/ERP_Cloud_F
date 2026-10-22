@@ -402,9 +402,14 @@ describe('التقارير — frmRptKhzna · frmRptSalary · frmRptReseved · f
     expect(Number(cardOf(body, 's_count'))).toBe(4);
   });
 
-  it('🏦 حركة الصندوق — بلا صندوقٍ لا شيء، وبلا فترةٍ لا «رصيد سابق»', async () => {
-    // «اختر صندوقاً.» — the window refuses to run without one, so the report is empty.
-    expect(rowsIn((await report('cash-statement')).body).every((row) => row.operation !== 'سند قبض')).toBe(true);
+  it('🏦 حركة الصندوق — «الكل» يقرأ الأستاذ، وبلا فترةٍ لا «رصيد سابق»', async () => {
+    /**
+     * 🧾 DEF-R7-011 (م1): «الكل» لا يعني «لا شيء». كان الكشف بلا صندوقٍ يقرأ جدول أرصدة
+     * المواقع فيُخفي سندات القبض/الصرف التي لم تُحدِّثه؛ وصار يقرأ **الأستاذ** فيُظهر الحركة
+     * الحقيقية لكل المواقع. فالغيابُ هنا لا يُقرأ صمتاً.
+     */
+    const all = rowsIn((await report('cash-statement')).body);
+    expect(all.some((row) => row.operation === 'سند قبض')).toBe(true);
 
     const noPeriod = rowsIn((await get(`/reports/cash-statement?cashLocationId=${cashLocationId}`)).body);
     expect(noPeriod.some((row) => row.operation === 'رصيد سابق')).toBe(false);

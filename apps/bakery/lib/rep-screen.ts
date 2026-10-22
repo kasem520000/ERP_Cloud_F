@@ -169,12 +169,32 @@ export function repHeadlineCards(workspace: RepWorkspace): HeadlineCard[] {
 }
 
 /**
- * أوامرٌ يُباع منها الآن: حالتُها `loaded` وفيها متبقٍّ **بحسب الخادم**
- * (‏`expectedRemainingQty`). والأوامرُ المصفّاة/الملغاة/بانتظار الاستلام خارجها — فالبيعُ
- * منها يُرفض في الخادم (`VAN_LOAD_ORDER_NOT_RECEIVED`) ومنعُه هنا قولٌ لا ضبط.
+ * 🚚 الحالاتُ التي **العملُ جارٍ فيها** على عهدة المندوب.
+ *
+ * `loaded` = استلم ولم يبع بعد؛ `in_route` = بدأ البيع (يكتبها الخادم عند أوّل مستند،
+ * `van-sales.service.ts:4958`). وكانت الشاشة تعرف `loaded` وحدها، فكانت العهدة **تختفي**
+ * بعد أوّل فاتورة: لا بيعَ ثانٍ ولا إقفال — وهو DEF-R7-001. والخادمُ نفسه لا يمنع
+ * البيعَ في `in_route` (يرفض `draft`/`pending_receipt` بـ`VAN_LOAD_ORDER_NOT_RECEIVED`)،
+ * ولا يمنع الإقفالَ إلا على `settled` — فالقائمة هنا اتّباعٌ لحكم الخادم لا اجتهادٌ مقابله.
+ *
+ * و`pending_closing` ليست منها عمداً: بعد تقديم الإقفال صار العجزُ والتحصيلُ **صورةً**
+ * بانتظار المحاسب، وبيعٌ جديد بعدها يغيّر مجاميعَ الصورة تحت الاعتماد.
+ */
+export const OPEN_LOAD_ORDER_STATUSES = ['loaded', 'in_route'] as const;
+
+/** هل العهدةُ في حالة عملٍ جارٍ (يُباع منها ويُقدَّم إقفالها)؟ */
+export function isOpenLoadOrder(row: Pick<RepLoadOrderRow, 'status'>): boolean {
+  return (OPEN_LOAD_ORDER_STATUSES as readonly string[]).includes(row.status);
+}
+
+/**
+ * أوامرٌ يُباع منها الآن: حالتُها مفتوحة (`OPEN_LOAD_ORDER_STATUSES`) وفيها متبقٍّ
+ * **بحسب الخادم** (`expectedRemainingQty`). والأوامرُ المصفّاة/الملغاة/بانتظار الاستلام
+ * خارجها — فالبيعُ منها يُرفض في الخادم (`VAN_LOAD_ORDER_NOT_RECEIVED`) ومنعُه هنا قولٌ
+ * لا ضبط.
  */
 export function saleableLoadOrders(rows: readonly RepLoadOrderRow[]): RepLoadOrderRow[] {
-  return rows.filter((row) => row.status === 'loaded' && zero(row.expectedRemainingQty).gt(0));
+  return rows.filter((row) => isOpenLoadOrder(row) && zero(row.expectedRemainingQty).gt(0));
 }
 
 /** مستنداتٌ يُرجَع منها: صفوفُ البيع وحدها (فالخادمُ يرفض مرتجعَ مرتجع). */

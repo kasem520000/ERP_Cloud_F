@@ -5,6 +5,7 @@ import { calculateInvoiceTotals, DomainError, errorCodes, newId } from '@erp/con
 import {
   accounts,
   branches,
+  cashLocations,
   einvoiceCredentials,
   einvoiceSettings,
   employees,
@@ -114,6 +115,22 @@ export type SalesInvoiceInput = {
   /** ترحيل فوري للفاتورة عند الحفظ (الخيار الافتراضي في الواجهة السحابية ما لم يُفعَّل خيار المسودة). */
   autoPost?: boolean;
   settlement?: 'credit' | 'cash' | 'card' | 'bank';
+  /**
+   * R8-fix (DEF-R8-001) — حساب التسوية وموقعها كانا يُرسلان من الواجهة ويُقرآن في
+   * `postInTx`، لكنهما لم يكونا معلَنين على مدخل الإنشاء، فكان `create()` يُمرّر
+   * `settlement` وحده ويسقطهما (ثم 422 `SALES_SETTLEMENT_ACCOUNT_REQUIRED`). إعلانهما
+   * هنا يجعل «حفظ + ترحيل» بنداءٍ واحد يعمل مثل المسار ذي النداءين.
+   */
+  settlementAccountId?: string;
+  settlementCashLocationId?: string;
+  /** تعدد طرق الدفع عند الإنشاء المباشر — نفس بنية `PostingInput.settlements`. */
+  settlements?: {
+    method: 'cash' | 'card' | 'bank';
+    amount: string;
+    accountId: string;
+    cashLocationId?: string;
+    reference?: string;
+  }[];
 };
 export type PaymentInput = {
   method: 'cash' | 'card' | 'bank' | 'credit' | 'split';
@@ -440,8 +457,17 @@ export class SalesService {
     await this.usage.assertWithinLimit(tenantId, 'invoices_per_month');
     await this.assertSaveAllowed(tenantId, input);
     if (input.autoPost) {
+      /**
+       * R8-fix (DEF-R8-001) — كان يُمرَّر `settlement` وحده، فيُسقط الحقلان اللذان
+       * يبني عليهما `postInTx` قيد التسوية، ويُرفض الطلب الصحيح بـ422
+       * `SALES_SETTLEMENT_ACCOUNT_REQUIRED` رغم إرسال الحساب. الواجهة كانت تتفادى
+       * العيب بنداءين (مسودة ثم ترحيل)؛ النداء الواحد الآن يعمل كما يعمل النداءان.
+       */
       return this.createAndPost(tenantId, input, {
         settlement: input.settlement,
+        settlementAccountId: input.settlementAccountId,
+        settlementCashLocationId: input.settlementCashLocationId,
+        settlements: input.settlements,
       });
     }
     const id = await withTenantTx(this.database.db, tenantId, (tx) => this.createInTx(tx, tenantId, input));
@@ -973,11 +999,50 @@ export class SalesService {
         .where(and(eq(salesInvoiceLines.tenantId, tenantId), eq(salesInvoiceLines.invoiceId, id)));
       const cogsTotal = costRows.reduce((sum, row) => sum.plus(row.costTotal ?? '0'), new Decimal(0));
       const mapping = profile.mapping as unknown as Record<string, string | null | undefined>;
+      /**
+       * 🌐 DEF-R7-010 — «الشبكة» ليست نقداً في الدرج.
+       *
+       * كان التحصيل ببطاقةٍ يُفتح على حساب **الصندوق النقدي** ما دام هو الافتراضي، فتُقيَّد
+       * الإيرادات النقدية على الصندوق بينما المال في البنك: ينتفخ درج النقد ويُعدّ الكشف
+       * إيراداً نقدياً لم يُقبض، وينقص البنك بالقدر نفسه. والقاعدة الآن:
+       *
+       * 1. بطاقة/تحويل بلا حساب ⇒ حساب البنك من ملف الترحيل (`bankAccountId`) لا الصندوق.
+       * 2. حسابُ تسويةٍ هو حساب صندوقٍ نقدي (`cash_locations.kind = 'safe'`) مع بطاقة أو تحويل
+       *    ⇒ **422** برسالةٍ تسمّي الموقع والحلّ — لا تحذيراً يُتجاهل.
+       *
+       * والحساب الذي لا ينتمي إلى أي موقع نقدي يبقى مقبولاً: قد يكون حساب بنكٍ مُعرَّفاً في
+       * ملف الترحيل وحده، ولا يصحّ رفضه لغياب صفٍّ في مواقع النقد.
+       */
+      const cardLike = posting.settlement === 'card' || posting.settlement === 'bank';
+      const resolvedSettlementAccountId = cardLike
+        ? (posting.settlementAccountId ?? mapping.bankAccountId ?? undefined)
+        : posting.settlementAccountId;
+      if (cardLike && resolvedSettlementAccountId) {
+        const [settlementLocation] = await tx
+          .select({ id: cashLocations.id, kind: cashLocations.kind, name: cashLocations.name })
+          .from(cashLocations)
+          .where(
+            and(
+              eq(cashLocations.tenantId, tenantId),
+              eq(cashLocations.accountId, resolvedSettlementAccountId),
+              isNull(cashLocations.deletedAt),
+            ),
+          )
+          .limit(1);
+        if (settlementLocation?.kind === 'safe') {
+          throw new DomainError(
+            'SALES_CARD_SETTLEMENT_ON_SAFE',
+            `التحصيل بطريقة «${posting.settlement === 'card' ? 'شبكة' : 'تحويل'}» لا يُقيَّد على صندوقٍ نقدي: الموقع المختار «${settlementLocation.name}» صندوقُ نقد، والمالُ لم يدخل الدرج. اختر حساب البنك (موقع نقدي من نوع بنك أو حساب «البنك» في ملف الترحيل) — ولم يُرحَّل شيء.`,
+            422,
+            { field: 'settlementAccountId' },
+          );
+        }
+      }
       const settlementAccountIds = [
         ...(posting.settlement !== undefined &&
         posting.settlement !== 'credit' &&
-        posting.settlementAccountId
-          ? [posting.settlementAccountId]
+        resolvedSettlementAccountId
+          ? [resolvedSettlementAccountId]
           : []),
         ...(posting.settlements ?? []).map((entry) => entry.accountId),
       ];
@@ -999,7 +1064,7 @@ export class SalesService {
         mapping,
         cogsTotal,
         posting.settlement ?? 'credit',
-        posting.settlementAccountId,
+        resolvedSettlementAccountId,
         posting.settlements,
         costRows,
       );
@@ -1089,12 +1154,33 @@ export class SalesService {
         : splitTenders.length > 0 && tenderedTotal.gt(0)
           ? 'partial'
           : 'unpaid';
+    /**
+     * R8-fix (DEF-R7-004) — الترويسة كانت تُرحَّل و`cost_total`/`profit` صفراً دائماً،
+     * لأن التكلفة تُكتب على **السطور** في `recordAutoStock` ولا تُجمَّع إلى الرأس.
+     * نتيجة ذلك أن «أرباح الفواتير» تعرض ربحاً = الصافي (هامش 100%)، وأن `cost_total`
+     * في ترويسة الفاتورة يبقى صفراً. هنا يُجمَّع من السطور بعد حركة المخزون:
+     *   • البيع: ربح = الصافي − التكلفة.
+     *   • المرتجع: أثره في الربح سالب (الصافي يُعكس والتكلفة تُعكس) ⇒ ربح = التكلفة − الصافي.
+     * ويُقرأ المجموع من السطور لا من المتغيّر المحسوب أعلاه، لأن مسار `journalLines`
+     * اليدوي لا يمرّ بحساب `cogsTotal`.
+     */
+    const [costAggregate] = await tx
+      .select({ cost: sql<string>`COALESCE(SUM(${salesInvoiceLines.costTotal}), 0)::text` })
+      .from(salesInvoiceLines)
+      .where(and(eq(salesInvoiceLines.tenantId, tenantId), eq(salesInvoiceLines.invoiceId, id)));
+    const headerCost = money(costAggregate?.cost ?? '0').toDecimalPlaces(4);
+    const headerProfit =
+      locked.kind === 'sale' || locked.kind === 'debit_note'
+        ? money(locked.subtotal).minus(headerCost)
+        : headerCost.minus(money(locked.subtotal));
     await tx
       .update(salesInvoices)
       .set({
         status: 'posted',
         number,
         postedAt: new Date(),
+        costTotal: headerCost.toFixed(4),
+        profit: headerProfit.toFixed(4),
         paidTotal: settled
           ? locked.total
           : splitTenders.length
@@ -1475,6 +1561,43 @@ export class SalesService {
   async void(tenantId: string, id: string, reason: string) {
     if (!reason.trim()) throw new DomainError('SALES_VOID_REASON_REQUIRED', 'A void reason is required', 422);
     const invoice = await this.get(tenantId, id);
+    /**
+     * 📝 **مسودّة** الفاتورة تُلغى ولا تُرحَّل: أثرها صفر (لا قيد ولا مخزون)، ولا مسار آخر
+     * للتخلص منها (`DELETE` غير موجود، و`PATCH` يعدّل ولا يُلغي) — فمنعُ الإلغاء بها كان
+     * يحبس مسودّةً خاطئة في القائمة إلى الأبد، وهو ما يقول التعليقُ أدناه إنه غير مقبول
+     * ويخالفه الشرطُ الذي كان فوقه. والشرط الآن يفصل المسارين صراحةً.
+     */
+    if (invoice.status === 'draft') {
+      await withTenantTx(this.database.db, tenantId, async (tx) => {
+        const [locked] = await tx
+          .select({ status: salesInvoices.status })
+          .from(salesInvoices)
+          .where(and(eq(salesInvoices.tenantId, tenantId), eq(salesInvoices.id, id)))
+          .for('update');
+        if (!locked || locked.status !== 'draft')
+          throw new DomainError(
+            'SALES_INVOICE_INVALID_STATUS',
+            'Only a draft or a posted invoice can be voided',
+            409,
+          );
+        await tx
+          .update(salesInvoices)
+          .set({
+            status: 'voided',
+            voidedAt: new Date(),
+            updatedAt: new Date(),
+            zatcaStatus: `voided:${reason}`,
+          })
+          .where(
+            and(
+              eq(salesInvoices.tenantId, tenantId),
+              eq(salesInvoices.id, id),
+              eq(salesInvoices.status, 'draft'),
+            ),
+          );
+      });
+      return this.get(tenantId, id);
+    }
     if (invoice.status !== 'posted')
       throw new DomainError('SALES_INVOICE_INVALID_STATUS', 'Only posted invoices can be voided', 409);
     if (
@@ -1794,10 +1917,16 @@ export class SalesService {
         returned.get(itemId) ?? new Decimal(0),
       );
       if (quantity.gt(available))
+        /**
+         * R8-fix (DEF-R8-009) — الرفض كان صحيحاً لكن الرسالة عامة («البيانات غير
+         * مكتملة أو غير صحيحة») فلا يعرف المستخدم الحدّ المسموح. يُرجع الآن المطلوب
+         * والمتبقي ورقم الفاتورة الأصلية في `details`، والواجهة تعرضه كما هو.
+         */
         throw new DomainError(
           'SALES_RETURN_QUANTITY_EXCEEDED',
-          'Return quantity exceeds the remaining invoice quantity',
+          `الكمية المرتجعة (${quantity.toString()}) تتجاوز المتبقي (${available.toString()}) من الفاتورة الأصلية`,
           422,
+          { field: 'quantity', itemId, requested: quantity.toString(), remaining: available.toString() },
         );
     }
     return this.create(tenantId, {

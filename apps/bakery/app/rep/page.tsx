@@ -40,6 +40,7 @@ import {
   actionEndpoint,
   bodyWithIdempotencyKey,
   closingShortageText,
+  isOpenLoadOrder,
   receiptShortfallText,
   repHeadlineCards,
   repWindowNotes,
@@ -1158,9 +1159,10 @@ export default function RepAppPage() {
                           data-tone={
                             row.status === 'settled'
                               ? 'ok'
-                              : row.status === 'pending_closing'
+                              : row.status === 'pending_closing' ||
+                                  row.status === 'pending_stock_settlement'
                                 ? 'warn'
-                                : row.status === 'loaded'
+                                : isOpenLoadOrder(row)
                                   ? undefined
                                   : 'danger'
                           }
@@ -1184,7 +1186,7 @@ export default function RepAppPage() {
                         </p>
                       ) : null}
                       <div className="rep-row-actions">
-                        {canClose && row.status === 'loaded' ? (
+                        {canClose && isOpenLoadOrder(row) ? (
                           <button
                             type="button"
                             className="rep-btn"

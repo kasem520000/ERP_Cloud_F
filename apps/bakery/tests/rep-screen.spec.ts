@@ -5,6 +5,7 @@ import {
   actionEndpoint,
   bodyWithIdempotencyKey,
   closingShortageText,
+  isOpenLoadOrder,
   receiptShortfallText,
   repHeadlineCards,
   REP_WINDOW_FALLBACKS,
@@ -234,8 +235,15 @@ describe('شاشة المندوب: نوافذُ الخادم، وفحصُ مجا
       loadOrder({ id: 'c', status: 'settled', expectedRemainingQty: '9.0000' }),
       loadOrder({ id: 'd', status: 'pending_receipt', expectedRemainingQty: '10.0000' }),
       loadOrder({ id: 'e', status: 'pending_closing', expectedRemainingQty: '3.0000' }),
+      // ‏DEF-R7-001: ‏`in_route` هي حالة العهدة **بعد أوّل فاتورة**، وكانت الشاشة تُخفيها
+      // فيتوقف المندوب عن البيع والإقفال معاً. والخادم يقبلها في المسارين.
+      loadOrder({ id: 'f', status: 'in_route', expectedRemainingQty: '7.0000' }),
     ];
-    expect(saleableLoadOrders(rows).map((row) => row.id)).toEqual(['a']);
+    expect(saleableLoadOrders(rows).map((row) => row.id)).toEqual(['a', 'f']);
+    // ‏والإقفال على نفس الحالتين المفتوحتين، لا على `loaded` وحدها.
+    expect(rows.filter((row) => isOpenLoadOrder(row)).map((row) => row.id)).toEqual(['a', 'b', 'f']);
+    expect(isOpenLoadOrder(loadOrder({ status: 'pending_closing' }))).toBe(false);
+    expect(isOpenLoadOrder(loadOrder({ status: 'settled' }))).toBe(false);
 
     const docs = [document({ id: 's1', documentKind: 'sale' }), document({ id: 'r1', documentKind: 'return' })];
     expect(returnableDocuments(docs).map((row) => row.id)).toEqual(['s1']);

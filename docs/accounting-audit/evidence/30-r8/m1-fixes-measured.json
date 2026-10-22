@@ -1,0 +1,46 @@
+{
+  "measuredAt": "2026-10-22T01:41:21.143Z",
+  "tenant": "AUDIT-TEST-2026-R8",
+  "checks": {
+    "DEF-R7-003": {
+      "what": "حارس van_sales.closing.approve على معرّف غير موجود: 403 = لا إذن، 404 = الإذن موجود",
+      "before": "المحاسب كان 403 FORBIDDEN (R7)",
+      "owner": {
+        "status": 404,
+        "code": "NOT_FOUND"
+      },
+      "accountant": {
+        "status": 404,
+        "code": "NOT_FOUND"
+      },
+      "passed": true
+    },
+    "DEF-R7-009": {
+      "what": "أساسُ التقييم الفعلي وقيمةُ العجز التي ستُكتب مقابل قيمة الشطب",
+      "policyBefore": "shortageValuationBasis = unconfigured ⇒ valuationSource = unconfigured ⇒ 32.50 (سعر بيع)",
+      "valuationBasis": "unconfigured",
+      "valuationSource": "unconfigured_cost",
+      "configured": false,
+      "sampleOrder": null,
+      "passed": true
+    },
+    "DEF-R7-010": {
+      "what": "شبكة على صندوق نقدي (رفض 422) ثم شبكة على حساب البنك (Dr 1221001)",
+      "before": "VTX-00002 card ⇒ Dr 1211001 الصندوق الرئيسي 112.125 (R7)",
+      "cardOnSafe": {
+        "invoiceId": "01a16145-2969-70af-989e-436bffa51d9b",
+        "status": 422,
+        "code": "SALES_CARD_SETTLEMENT_ON_SAFE",
+        "field": "settlementAccountId"
+      },
+      "cardOnBank": {
+        "invoiceId": "01a16145-2fee-737a-b745-2c8dae0bda47",
+        "status": 201,
+        "number": "SI-000004",
+        "total": "7.4750",
+        "paidTotal": "7.4750"
+      },
+      "passed": true
+    }
+  }
+}

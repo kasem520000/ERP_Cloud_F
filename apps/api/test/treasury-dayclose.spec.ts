@@ -36,6 +36,7 @@ describe('Treasury day closes — إغلاقات اليومية', () => {
   let branchId = '';
   let warehouseId = '';
   let safeId = '';
+  let bankId = '';
   let customerId = '';
   let safeAccountId = '';
   let receivableAccountId = '';
@@ -202,6 +203,23 @@ const amt = (value: unknown) => Number(value).toFixed(4);
       body: { branchId, kind: 'safe', name: 'الصندوق الرئيسي', accountId: safeAccountId, isDefault: true },
     });
     safeId = data(safe.body).id as string;
+
+    /**
+     * 🏦 حسابُ بنكٍ حقيقي — لأن «الشبكة» ليست نقداً (DEF-R7-010): تحصيلُ بطاقةٍ على صندوق
+     * نقدي يُرفض 422، فصار الاختبار يمرّ بموقع بنكٍ كما يمرّ في الواقع.
+     */
+    const bank = await api(ctx.server, 'post', '/api/v1/cash-locations', {
+      token: actor.token,
+      body: {
+        branchId,
+        kind: 'bank',
+        name: 'البنك الأهلي',
+        accountId: cashAccountId,
+        bank: { bankName: 'البنك الأهلي السعودي', iban: 'SA0380000000608010167519' },
+      },
+    });
+    expect(bank.status).toBe(201);
+    bankId = data(bank.body).id as string;
 
     const category = await api(ctx.server, 'post', '/api/v1/organization/catalog/categories', {
       token: actor.token,
@@ -395,7 +413,7 @@ const amt = (value: unknown) => Number(value).toFixed(4);
         branchId,
         warehouseId,
         lines: [{ itemId, quantity: '2', unitPrice: '100', taxRate: '15' }],
-        payment: { method: 'card', cashLocationId: safeId },
+        payment: { method: 'card', cashLocationId: bankId },
       },
     });
     expect(card.status).toBe(201);
@@ -411,6 +429,28 @@ const amt = (value: unknown) => Number(value).toFixed(4);
       token: actor.token,
       body: { counts: [] },
     });
+  });
+
+  it('5ب. 🌐 تحصيلُ الشبكة على صندوقٍ نقدي يُرفض ولا يُرحَّل (DEF-R7-010)', async () => {
+    const before = await api(ctx.server, 'get', `/api/v1/cash-locations/${safeId}/balance`, {
+      token: actor.token,
+    });
+    const rejection = await api(ctx.server, 'post', '/api/v1/pos/checkout', {
+      token: actor.token,
+      body: {
+        branchId,
+        warehouseId,
+        lines: [{ itemId, quantity: '1', unitPrice: '100', taxRate: '15' }],
+        payment: { method: 'card', cashLocationId: safeId },
+      },
+    });
+    expect(rejection.status).toBe(422);
+    expect(JSON.stringify(rejection.body)).toContain('SALES_CARD_SETTLEMENT_ON_SAFE');
+    // ‏ولا حركةَ في الصندوق: الرفضُ يقع قبل أي ترحيل.
+    const after = await api(ctx.server, 'get', `/api/v1/cash-locations/${safeId}/balance`, {
+      token: actor.token,
+    });
+    expect(JSON.stringify(data(after.body))).toBe(JSON.stringify(data(before.body)));
   });
 
   it('6. تفاصيل الإغلاق: الملاحظات المعدودة وسطور الملخّص', async () => {

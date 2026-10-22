@@ -29,6 +29,7 @@ import {
 } from '../../common/date-param.js';
 import { DATABASE_HANDLE } from '../../database/database.module.js';
 import { SequencesService } from '../platform-services/index.js';
+import { tryGetAuthContext } from '../../request-context/request-context.js';
 
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
 
@@ -2023,6 +2024,13 @@ export class AccountingService {
       sourceId: input.sourceId ?? null,
       idempotencyKey: input.idempotencyKey ?? null,
       postedAt: new Date(),
+      /**
+       * R8-fix (DEF-R7-012) — كان `posted_by`/`created_by` يُتركان فارغين لكل قيدٍ
+       * تلقائي، فلا يُعرف من رحّل الفاتورة أو السند في الأستاذ. الآن يُؤخذ الفاعل من
+       * سياق الطلب كما تفعل بقية الوحدات (NULL يبقى للعمليات غير المرتبطة بطلب).
+       */
+      postedBy: tryGetAuthContext()?.userId ?? null,
+      createdBy: tryGetAuthContext()?.userId ?? null,
     });
     /**
      * الشرح — `FrmNewEntry.xaml.cs` L761 names the line after the account it settles when

@@ -1,0 +1,1127 @@
+{
+ "trial-balance": {
+  "status": 200,
+  "body": {
+   "key": "trial-balance",
+   "titleAr": "ميزان المراجعة",
+   "group": "accounting",
+   "hintAr": null,
+   "chart": null,
+   "params": {
+    "from": "2026-10-01",
+    "to": "2026-10-31"
+   },
+   "layout": null,
+   "columns": [
+    {
+     "key": "code",
+     "labelAr": "رقم الحساب",
+     "type": "text"
+    },
+    {
+     "key": "account",
+     "labelAr": "الحساب",
+     "type": "text"
+    },
+    {
+     "key": "debit",
+     "labelAr": "مدين",
+     "type": "money"
+    },
+    {
+     "key": "credit",
+     "labelAr": "دائن",
+     "type": "money"
+    },
+    {
+     "key": "balance",
+     "labelAr": "الرصيد",
+     "type": "money"
+    }
+   ],
+   "rows": [
+    {
+     "code": "1211001",
+     "account": "الصندوق الرئيسي",
+     "debit": "249.5000",
+     "credit": "62.3750",
+     "balance": "187.1250"
+    },
+    {
+     "code": "12310001",
+     "account": "عميل عام",
+     "debit": "186.8750",
+     "credit": "100.0000",
+     "balance": "86.8750"
+    },
+    {
+     "code": "1270001",
+     "account": "حساب بضاعة آخر المدة",
+     "debit": "779.0000",
+     "credit": "171.0000",
+     "balance": "608.0000"
+    },
+    {
+     "code": "22111001",
+     "account": "مورد عام",
+     "debit": "0.0000",
+     "credit": "874.0000",
+     "balance": "-874.0000"
+    },
+    {
+     "code": "2222001",
+     "account": "ضريبة القيمة المضافة",
+     "debit": "118.8750",
+     "credit": "43.8750",
+     "balance": "75.0000"
+    },
+    {
+     "code": "3130002",
+     "account": "فواتير كهرباء",
+     "debit": "25.0000",
+     "credit": "0.0000",
+     "balance": "25.0000"
+    },
+    {
+     "code": "3200004",
+     "account": "تكلفة المبيعات",
+     "debit": "171.0000",
+     "credit": "19.0000",
+     "balance": "152.0000"
+    },
+    {
+     "code": "4100001",
+     "account": "المبيعات",
+     "debit": "0.0000",
+     "credit": "292.5000",
+     "balance": "-292.5000"
+    },
+    {
+     "code": "4100002",
+     "account": "مردودات المبيعات",
+     "debit": "32.5000",
+     "credit": "0.0000",
+     "balance": "32.5000"
+    }
+   ],
+   "totals": {
+    "debit": "1562.75",
+    "credit": "1562.75",
+    "balance": "0.00"
+   },
+   "grandTotal": [],
+   "rowCount": 9,
+   "generatedAt": "2026-10-22T00:58:43.352Z"
+  }
+ },
+ "income-statement": {
+  "status": 200,
+  "body": {
+   "key": "income-statement",
+   "titleAr": "قائمة الدخل التحليلية",
+   "group": "accounting",
+   "hintAr": "الإيرادات موجبة والمصروفات سالبة؛ المجموع هو صافي الربح.",
+   "chart": null,
+   "params": {
+    "from": "2026-10-01",
+    "to": "2026-10-31"
+   },
+   "layout": null,
+   "columns": [
+    {
+     "key": "section",
+     "labelAr": "البند",
+     "type": "text"
+    },
+    {
+     "key": "code",
+     "labelAr": "رقم الحساب",
+     "type": "text"
+    },
+    {
+     "key": "account",
+     "labelAr": "الحساب",
+     "type": "text"
+    },
+    {
+     "key": "amount",
+     "labelAr": "المبلغ",
+     "type": "money"
+    }
+   ],
+   "rows": [
+    {
+     "section": "الإيرادات",
+     "code": "4100001",
+     "account": "المبيعات",
+     "amount": "292.5000"
+    },
+    {
+     "section": "الإيرادات",
+     "code": "4100002",
+     "account": "مردودات المبيعات",
+     "amount": "-32.5000"
+    },
+    {
+     "section": "المصروفات",
+     "code": "3130002",
+     "account": "فواتير كهرباء",
+     "amount": "-25.0000"
+    },
+    {
+     "section": "المصروفات",
+     "code": "3200004",
+     "account": "تكلفة المبيعات",
+     "amount": "-152.0000"
+    }
+   ],
+   "totals": {
+    "amount": "83.00"
+   },
+   "grandTotal": [],
+   "rowCount": 4,
+   "generatedAt": "2026-10-22T00:58:44.132Z"
+  }
+ },
+ "balance-sheet": {
+  "status": 200,
+  "body": {
+   "key": "balance-sheet",
+   "titleAr": "ميزانية تحليلية",
+   "group": "accounting",
+   "hintAr": "الأصول في مقابل الخصوم وحقوق الملكية، ويُضاف إليها صافي ربح الفترة أو خسارتها حتى التاريخ المحدد — فالميزانية لا تُقرأ إلّا متوازنة.",
+   "chart": null,
+   "params": {},
+   "layout": null,
+   "columns": [
+    {
+     "key": "section",
+     "labelAr": "القسم",
+     "type": "text"
+    },
+    {
+     "key": "code",
+     "labelAr": "رقم الحساب",
+     "type": "text"
+    },
+    {
+     "key": "account",
+     "labelAr": "الحساب",
+     "type": "text"
+    },
+    {
+     "key": "balance",
+     "labelAr": "الرصيد",
+     "type": "money"
+    }
+   ],
+   "rows": [
+    {
+     "section": "الأصول",
+     "code": "1211001",
+     "account": "الصندوق الرئيسي",
+     "balance": "187.1250"
+    },
+    {
+     "section": "الأصول",
+     "code": "12310001",
+     "account": "عميل عام",
+     "balance": "86.8750"
+    },
+    {
+     "section": "الأصول",
+     "code": "1270001",
+     "account": "حساب بضاعة آخر المدة",
+     "balance": "608.0000"
+    },
+    {
+     "section": "الخصوم",
+     "code": "22111001",
+     "account": "مورد عام",
+     "balance": "874.0000"
+    },
+    {
+     "section": "الخصوم",
+     "code": "2222001",
+     "account": "ضريبة القيمة المضافة",
+     "balance": "-75.0000"
+    },
+    {
+     "section": "حقوق الملكية",
+     "code": "",
+     "account": "صافي ربح الفترة",
+     "balance": "83.0000"
+    }
+   ],
+   "totals": {
+    "balance": "1764.00"
+   },
+   "grandTotal": [],
+   "rowCount": 6,
+   "generatedAt": "2026-10-22T00:58:44.944Z"
+  }
+ },
+ "ar-aging": {
+  "status": 200,
+  "body": {
+   "key": "ar-aging",
+   "titleAr": "أعمار ديون العملاء",
+   "group": "accounting",
+   "hintAr": "المتبقي على كل فاتورة مبيعات مرحّلة موزّعاً على شرائح العمر.",
+   "chart": null,
+   "params": {},
+   "layout": null,
+   "columns": [
+    {
+     "key": "party",
+     "labelAr": "العميل",
+     "type": "text"
+    },
+    {
+     "key": "bucket_0_30",
+     "labelAr": "0-30 يوم",
+     "type": "money"
+    },
+    {
+     "key": "bucket_31_60",
+     "labelAr": "31-60",
+     "type": "money"
+    },
+    {
+     "key": "bucket_61_90",
+     "labelAr": "61-90",
+     "type": "money"
+    },
+    {
+     "key": "bucket_90_plus",
+     "labelAr": "أكثر من 90",
+     "type": "money"
+    },
+    {
+     "key": "due",
+     "labelAr": "الإجمالي",
+     "type": "money"
+    }
+   ],
+   "rows": [
+    {
+     "party": "R8 عميل آجل",
+     "bucket_0_30": "186.8750",
+     "bucket_31_60": "0",
+     "bucket_61_90": "0",
+     "bucket_90_plus": "0",
+     "due": "186.8750"
+    }
+   ],
+   "totals": {
+    "bucket_0_30": "186.8750",
+    "bucket_31_60": "0.00",
+    "bucket_61_90": "0.00",
+    "bucket_90_plus": "0.00",
+    "due": "186.8750"
+   },
+   "grandTotal": [],
+   "rowCount": 1,
+   "generatedAt": "2026-10-22T00:58:45.718Z"
+  }
+ },
+ "ap-aging": {
+  "status": 200,
+  "body": {
+   "key": "ap-aging",
+   "titleAr": "أعمار ديون الموردين",
+   "group": "accounting",
+   "hintAr": null,
+   "chart": null,
+   "params": {},
+   "layout": null,
+   "columns": [
+    {
+     "key": "party",
+     "labelAr": "المورد",
+     "type": "text"
+    },
+    {
+     "key": "bucket_0_30",
+     "labelAr": "0-30 يوم",
+     "type": "money"
+    },
+    {
+     "key": "bucket_31_60",
+     "labelAr": "31-60",
+     "type": "money"
+    },
+    {
+     "key": "bucket_61_90",
+     "labelAr": "61-90",
+     "type": "money"
+    },
+    {
+     "key": "bucket_90_plus",
+     "labelAr": "أكثر من 90",
+     "type": "money"
+    },
+    {
+     "key": "due",
+     "labelAr": "الإجمالي",
+     "type": "money"
+    }
+   ],
+   "rows": [
+    {
+     "party": "R8 مورّد",
+     "bucket_0_30": "874.0000",
+     "bucket_31_60": "0",
+     "bucket_61_90": "0",
+     "bucket_90_plus": "0",
+     "due": "874.0000"
+    }
+   ],
+   "totals": {
+    "bucket_0_30": "874.00",
+    "bucket_31_60": "0.00",
+    "bucket_61_90": "0.00",
+    "bucket_90_plus": "0.00",
+    "due": "874.00"
+   },
+   "grandTotal": [],
+   "rowCount": 1,
+   "generatedAt": "2026-10-22T00:58:46.497Z"
+  }
+ },
+ "party-statement": {
+  "status": 200,
+  "body": {
+   "key": "party-statement",
+   "titleAr": "كشف حساب عميل",
+   "group": "accounting",
+   "hintAr": "`frmCustAccountGet`: حركة حساب العميل قيداً قيداً — مجموع مدينه ومجموع دائنه، ورصيده إلى أيّ الجانبين مال. و«🏷️ نوع الحساب» يجعله كشف المورد كذلك، وهي النافذة نفسها في الديسكتوب.",
+   "chart": null,
+   "params": {
+    "from": "2026-10-01",
+    "to": "2026-10-31",
+    "partyId": "01a160ef-685b-77ce-b79e-349312f6fa14"
+   },
+   "layout": null,
+   "columns": [
+    {
+     "key": "seq",
+     "labelAr": "م",
+     "type": "int"
+    },
+    {
+     "key": "debit",
+     "labelAr": "مدين",
+     "type": "money"
+    },
+    {
+     "key": "credit",
+     "labelAr": "دائن",
+     "type": "money"
+    },
+    {
+     "key": "party",
+     "labelAr": "العميل / المورد",
+     "type": "text"
+    },
+    {
+     "key": "number",
+     "labelAr": "رقم القيد",
+     "type": "text"
+    },
+    {
+     "key": "day",
+     "labelAr": "تاريخ القيد",
+     "type": "date"
+    },
+    {
+     "key": "note",
+     "labelAr": "البيان",
+     "type": "text"
+    }
+   ],
+   "rows": [
+    {
+     "seq": "1",
+     "debit": "281.88",
+     "credit": "281.88",
+     "party": "R8 عميل آجل",
+     "number": "JE-000003",
+     "day": "2026-10-22",
+     "note": "Sales invoice SI-000002",
+     "s_debit": "281.88",
+     "s_credit": "381.88",
+     "s_bal_debit": "0",
+     "s_bal_credit": "100.0000",
+     "s_count": "1"
+    },
+    {
+     "seq": "2",
+     "debit": "0.00",
+     "credit": "100.00",
+     "party": "R8 عميل آجل",
+     "number": "JE-000005",
+     "day": "2026-10-22",
+     "note": "R8-RECEIPT-100",
+     "s_debit": "0",
+     "s_credit": "0",
+     "s_bal_debit": "0",
+     "s_bal_credit": "0",
+     "s_count": "1"
+    }
+   ],
+   "totals": {
+    "debit": "281.88",
+    "credit": "381.88"
+   },
+   "grandTotal": [
+    {
+     "key": "s_debit",
+     "labelAr": "إجمالي المدين",
+     "amount": "281.88"
+    },
+    {
+     "key": "s_credit",
+     "labelAr": "إجمالي الدائن",
+     "amount": "381.88"
+    },
+    {
+     "key": "s_bal_debit",
+     "labelAr": "الرصيد المدين",
+     "amount": "0.00"
+    },
+    {
+     "key": "s_bal_credit",
+     "labelAr": "الرصيد الدائن",
+     "amount": "100.00"
+    },
+    {
+     "key": "s_count",
+     "labelAr": "عدد القيود",
+     "amount": "2.00"
+    }
+   ],
+   "rowCount": 2,
+   "generatedAt": "2026-10-22T00:58:47.272Z"
+  }
+ },
+ "party-statement-supplier": {
+  "status": 200,
+  "body": {
+   "key": "party-statement",
+   "titleAr": "كشف حساب عميل",
+   "group": "accounting",
+   "hintAr": "`frmCustAccountGet`: حركة حساب العميل قيداً قيداً — مجموع مدينه ومجموع دائنه، ورصيده إلى أيّ الجانبين مال. و«🏷️ نوع الحساب» يجعله كشف المورد كذلك، وهي النافذة نفسها في الديسكتوب.",
+   "chart": null,
+   "params": {
+    "from": "2026-10-01",
+    "to": "2026-10-31",
+    "partyId": "01a160ef-6542-7102-804a-1491c1a9f29b"
+   },
+   "layout": null,
+   "columns": [
+    {
+     "key": "seq",
+     "labelAr": "م",
+     "type": "int"
+    },
+    {
+     "key": "debit",
+     "labelAr": "مدين",
+     "type": "money"
+    },
+    {
+     "key": "credit",
+     "labelAr": "دائن",
+     "type": "money"
+    },
+    {
+     "key": "party",
+     "labelAr": "العميل / المورد",
+     "type": "text"
+    },
+    {
+     "key": "number",
+     "labelAr": "رقم القيد",
+     "type": "text"
+    },
+    {
+     "key": "day",
+     "labelAr": "تاريخ القيد",
+     "type": "date"
+    },
+    {
+     "key": "note",
+     "labelAr": "البيان",
+     "type": "text"
+    }
+   ],
+   "rows": [
+    {
+     "seq": "1",
+     "debit": "874.00",
+     "credit": "874.00",
+     "party": "R8 مورّد",
+     "number": "JE-000001",
+     "day": "2026-10-22",
+     "note": "Purchase invoice PI-000001",
+     "s_debit": "874.00",
+     "s_credit": "874.00",
+     "s_bal_debit": "0.0000",
+     "s_bal_credit": "0.0000",
+     "s_count": "1"
+    }
+   ],
+   "totals": {
+    "debit": "874.00",
+    "credit": "874.00"
+   },
+   "grandTotal": [
+    {
+     "key": "s_debit",
+     "labelAr": "إجمالي المدين",
+     "amount": "874.00"
+    },
+    {
+     "key": "s_credit",
+     "labelAr": "إجمالي الدائن",
+     "amount": "874.00"
+    },
+    {
+     "key": "s_bal_debit",
+     "labelAr": "الرصيد المدين",
+     "amount": "0.00"
+    },
+    {
+     "key": "s_bal_credit",
+     "labelAr": "الرصيد الدائن",
+     "amount": "0.00"
+    },
+    {
+     "key": "s_count",
+     "labelAr": "عدد القيود",
+     "amount": "1.00"
+    }
+   ],
+   "rowCount": 1,
+   "generatedAt": "2026-10-22T00:58:48.049Z"
+  }
+ },
+ "cash-statement": {
+  "status": 200,
+  "body": {
+   "key": "cash-statement",
+   "titleAr": "حركة الصندوق",
+   "group": "accounting",
+   "hintAr": "كشفُ الصندوق كما في `frmRptKhzna`: سطر «رصيد سابق» يفتح الفترة، ثم حركةٌ بسطر مع رصيدٍ متحرك، ثم بطاقتا «الرصيد الإجمالي» و«رصيد الفترة المحددة».",
+   "chart": null,
+   "params": {
+    "from": "2026-10-01",
+    "to": "2026-10-31",
+    "cashLocationId": "01a160ef-1adb-760e-a271-95c05814ae66"
+   },
+   "layout": null,
+   "columns": [
+    {
+     "key": "seq",
+     "labelAr": "م",
+     "type": "int"
+    },
+    {
+     "key": "operation",
+     "labelAr": "العملية",
+     "type": "text"
+    },
+    {
+     "key": "doc_no",
+     "labelAr": "الرقم",
+     "type": "text"
+    },
+    {
+     "key": "day",
+     "labelAr": "📅 التاريخ",
+     "type": "date"
+    },
+    {
+     "key": "income",
+     "labelAr": "📥 وارد",
+     "type": "money"
+    },
+    {
+     "key": "outcome",
+     "labelAr": "📤 صادر",
+     "type": "money"
+    },
+    {
+     "key": "balance",
+     "labelAr": "⚖️ الرصيد",
+     "type": "money"
+    },
+    {
+     "key": "note",
+     "labelAr": "📝 البيان",
+     "type": "text"
+    }
+   ],
+   "rows": [
+    {
+     "seq": "1",
+     "operation": "رصيد سابق",
+     "doc_no": "—",
+     "day": "2026-09-30",
+     "income": "0.00",
+     "outcome": "0.00",
+     "balance": "0.00",
+     "note": "",
+     "s_all": "187.13",
+     "s_period": "187.13",
+     "s_count": "1"
+    },
+    {
+     "seq": "2",
+     "operation": "قيد نقطة بيع",
+     "doc_no": "JE-000002",
+     "day": "2026-10-22",
+     "income": "149.50",
+     "outcome": "0.00",
+     "balance": "149.50",
+     "note": "Sales invoice SI-000001",
+     "s_all": "0",
+     "s_period": "0",
+     "s_count": "1"
+    },
+    {
+     "seq": "3",
+     "operation": "مرتجع مبيعات",
+     "doc_no": "JE-000004",
+     "day": "2026-10-22",
+     "income": "0.00",
+     "outcome": "37.38",
+     "balance": "112.13",
+     "note": "Sales invoice SR-000001",
+     "s_all": "0",
+     "s_period": "0",
+     "s_count": "1"
+    },
+    {
+     "seq": "4",
+     "operation": "سند قبض",
+     "doc_no": "JE-000005",
+     "day": "2026-10-22",
+     "income": "100.00",
+     "outcome": "0.00",
+     "balance": "212.13",
+     "note": "R8-RECEIPT-100",
+     "s_all": "0",
+     "s_period": "0",
+     "s_count": "1"
+    },
+    {
+     "seq": "5",
+     "operation": "سند صرف",
+     "doc_no": "JE-000006",
+     "day": "2026-10-22",
+     "income": "0.00",
+     "outcome": "25.00",
+     "balance": "187.13",
+     "note": "R8-PAYMENT-25",
+     "s_all": "0",
+     "s_period": "0",
+     "s_count": "1"
+    }
+   ],
+   "totals": {
+    "income": "249.50",
+    "outcome": "62.38"
+   },
+   "grandTotal": [
+    {
+     "key": "s_all",
+     "labelAr": "الرصيد الإجمالي",
+     "amount": "187.13"
+    },
+    {
+     "key": "s_period",
+     "labelAr": "رصيد الفترة المحددة",
+     "amount": "187.13"
+    },
+    {
+     "key": "s_count",
+     "labelAr": "عدد الحركات",
+     "amount": "5.00"
+    }
+   ],
+   "rowCount": 5,
+   "generatedAt": "2026-10-22T00:58:48.831Z"
+  }
+ },
+ "cash-statement-all": {
+  "status": 200,
+  "body": {
+   "key": "cash-statement",
+   "titleAr": "حركة الصندوق",
+   "group": "accounting",
+   "hintAr": "كشفُ الصندوق كما في `frmRptKhzna`: سطر «رصيد سابق» يفتح الفترة، ثم حركةٌ بسطر مع رصيدٍ متحرك، ثم بطاقتا «الرصيد الإجمالي» و«رصيد الفترة المحددة».",
+   "chart": null,
+   "params": {
+    "from": "2026-10-01",
+    "to": "2026-10-31"
+   },
+   "layout": null,
+   "columns": [
+    {
+     "key": "seq",
+     "labelAr": "م",
+     "type": "int"
+    },
+    {
+     "key": "operation",
+     "labelAr": "العملية",
+     "type": "text"
+    },
+    {
+     "key": "doc_no",
+     "labelAr": "الرقم",
+     "type": "text"
+    },
+    {
+     "key": "day",
+     "labelAr": "📅 التاريخ",
+     "type": "date"
+    },
+    {
+     "key": "income",
+     "labelAr": "📥 وارد",
+     "type": "money"
+    },
+    {
+     "key": "outcome",
+     "labelAr": "📤 صادر",
+     "type": "money"
+    },
+    {
+     "key": "balance",
+     "labelAr": "⚖️ الرصيد",
+     "type": "money"
+    },
+    {
+     "key": "note",
+     "labelAr": "📝 البيان",
+     "type": "text"
+    }
+   ],
+   "rows": [
+    {
+     "seq": "1",
+     "operation": "رصيد سابق",
+     "doc_no": "—",
+     "day": "2026-09-30",
+     "income": "0.00",
+     "outcome": "0.00",
+     "balance": "0.00",
+     "note": "",
+     "s_all": "0.00",
+     "s_period": "0.00",
+     "s_count": "1"
+    }
+   ],
+   "totals": {
+    "income": "0.00",
+    "outcome": "0.00"
+   },
+   "grandTotal": [
+    {
+     "key": "s_all",
+     "labelAr": "الرصيد الإجمالي",
+     "amount": "0.00"
+    },
+    {
+     "key": "s_period",
+     "labelAr": "رصيد الفترة المحددة",
+     "amount": "0.00"
+    },
+    {
+     "key": "s_count",
+     "labelAr": "عدد الحركات",
+     "amount": "1.00"
+    }
+   ],
+   "rowCount": 1,
+   "generatedAt": "2026-10-22T00:58:49.608Z"
+  }
+ },
+ "cash-movement": {
+  "status": 200,
+  "body": {
+   "key": "cash-movement",
+   "titleAr": "حركة الصندوق",
+   "group": "accounting",
+   "hintAr": "القبض والصرف المرحّل لكل صندوق أو بنك.",
+   "chart": null,
+   "params": {
+    "from": "2026-10-01",
+    "to": "2026-10-31",
+    "cashLocationId": "01a160ef-1adb-760e-a271-95c05814ae66"
+   },
+   "layout": null,
+   "columns": [
+    {
+     "key": "location",
+     "labelAr": "الصندوق / البنك",
+     "type": "text"
+    },
+    {
+     "key": "receipts",
+     "labelAr": "قبض",
+     "type": "money"
+    },
+    {
+     "key": "payments",
+     "labelAr": "صرف",
+     "type": "money"
+    },
+    {
+     "key": "net",
+     "labelAr": "الصافي",
+     "type": "money"
+    }
+   ],
+   "rows": [
+    {
+     "location": "الصندوق الرئيسي",
+     "receipts": "100.0000",
+     "payments": "25.0000",
+     "net": "75.0000"
+    }
+   ],
+   "totals": {
+    "receipts": "100.00",
+    "payments": "25.00",
+    "net": "75.00"
+   },
+   "grandTotal": [],
+   "rowCount": 1,
+   "generatedAt": "2026-10-22T00:58:50.384Z"
+  }
+ },
+ "vat-return-period": {
+  "status": 200,
+  "body": {
+   "key": "vat-return-period",
+   "titleAr": "إقرار ضريبي",
+   "group": "accounting",
+   "hintAr": "الإقرار الضريبي للفترة كما يطبعه `TaxRptPeriod.repx`: المبيعات والمشتريات ببنودهما الستة، وصافي الضريبة المستحقة.",
+   "chart": null,
+   "params": {
+    "from": "2026-10-01",
+    "to": "2026-10-31"
+   },
+   "layout": null,
+   "columns": [
+    {
+     "key": "section",
+     "labelAr": "القسم",
+     "type": "text"
+    },
+    {
+     "key": "line",
+     "labelAr": "الوصف",
+     "type": "text"
+    },
+    {
+     "key": "net",
+     "labelAr": "الصافي",
+     "type": "money"
+    },
+    {
+     "key": "vat",
+     "labelAr": "الضريبة",
+     "type": "money"
+    }
+   ],
+   "rows": [
+    {
+     "section": "ضريبة القيمة المضافة على المبيعات",
+     "line": "المبيعات الخاضعة للنسبة الأساسية",
+     "net": "260.00",
+     "vat": "39.00",
+     "s_net_vat": "39.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المبيعات",
+     "line": "الإيرادات الأخرى",
+     "net": "0.00",
+     "vat": "0.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المبيعات",
+     "line": "سندات القبض",
+     "net": "100.00",
+     "vat": "0.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المبيعات",
+     "line": "المبيعات المحلية الخاضعة للنسبة الصفرية",
+     "net": "0.00",
+     "vat": "0.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المبيعات",
+     "line": "المبيعات المعفاة",
+     "net": "0.00",
+     "vat": "0.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المبيعات",
+     "line": "صافي المبيعات",
+     "net": "360.00",
+     "vat": "39.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المشتريات",
+     "line": "المشتريات الخاضعة للنسبة الأساسية",
+     "net": "760.00",
+     "vat": "114.00",
+     "s_net_vat": "-114.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المشتريات",
+     "line": "الإستيرادات الخاضعة للقيمة المضافة بالنسبة الأساسية",
+     "net": "0.00",
+     "vat": "0.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المشتريات",
+     "line": "سندات الصرف",
+     "net": "25.00",
+     "vat": "0.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المشتريات",
+     "line": "الإستيرادات الخاضعة للقيمة المضافة التي تطبق عليها آلية الاحتساب العكسي",
+     "net": "0.00",
+     "vat": "0.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المشتريات",
+     "line": "المشتريات المعفاة",
+     "net": "0.00",
+     "vat": "0.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "ضريبة القيمة المضافة على المشتريات",
+     "line": "صافي المشتريات",
+     "net": "785.00",
+     "vat": "114.00",
+     "s_net_vat": "0.00"
+    },
+    {
+     "section": "صافي ضريبة القيمة المضافة",
+     "line": "غير مستحق",
+     "net": "0.00",
+     "vat": "-75.00",
+     "s_net_vat": "0.00"
+    }
+   ],
+   "totals": {},
+   "grandTotal": [
+    {
+     "key": "s_net_vat",
+     "labelAr": "صافي ضريبة القيمة المضافة",
+     "amount": "-75.00"
+    }
+   ],
+   "rowCount": 13,
+   "generatedAt": "2026-10-22T00:58:51.165Z"
+  }
+ },
+ "invoice-profit": {
+  "status": 200,
+  "body": {
+   "key": "invoice-profit",
+   "titleAr": "أرباح الفواتير",
+   "group": "sales",
+   "hintAr": "التكلفة هي ما قوّم به المخزون الحركة الخارجة وقت الترحيل.",
+   "chart": null,
+   "params": {
+    "from": "2026-10-01",
+    "to": "2026-10-31"
+   },
+   "layout": null,
+   "columns": [
+    {
+     "key": "number",
+     "labelAr": "الفاتورة",
+     "type": "text"
+    },
+    {
+     "key": "day",
+     "labelAr": "التاريخ",
+     "type": "date"
+    },
+    {
+     "key": "party",
+     "labelAr": "العميل",
+     "type": "text"
+    },
+    {
+     "key": "subtotal",
+     "labelAr": "الصافي",
+     "type": "money"
+    },
+    {
+     "key": "cost_total",
+     "labelAr": "التكلفة",
+     "type": "money"
+    },
+    {
+     "key": "profit",
+     "labelAr": "الربح",
+     "type": "money"
+    },
+    {
+     "key": "margin",
+     "labelAr": "هامش الربح",
+     "type": "percent"
+    }
+   ],
+   "rows": [
+    {
+     "number": "SI-000002",
+     "day": "2026-10-22",
+     "party": "R8 عميل آجل",
+     "subtotal": "162.5000",
+     "cost_total": "0.0000",
+     "profit": "162.5000",
+     "margin": "100.00"
+    },
+    {
+     "number": "SI-000001",
+     "day": "2026-10-22",
+     "party": "—",
+     "subtotal": "130.0000",
+     "cost_total": "0.0000",
+     "profit": "130.0000",
+     "margin": "100.00"
+    }
+   ],
+   "totals": {
+    "subtotal": "292.50",
+    "cost_total": "0.00",
+    "profit": "292.50"
+   },
+   "grandTotal": [],
+   "rowCount": 2,
+   "generatedAt": "2026-10-22T00:58:51.939Z"
+  }
+ }
+}

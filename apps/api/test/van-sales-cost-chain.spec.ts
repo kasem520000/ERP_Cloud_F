@@ -9,7 +9,7 @@ import { api } from './http.js';
 import { createTestApp, type TestApp } from './test-app.js';
 
 const SELLER_NAME = 'مخابز سلسلة التكلفة';
-const SELLER_VAT = '310000000000021';
+const SELLER_VAT = '310000000000023';
 
 /**
  * 🔢 تكلفةُ المبيعات على مستند التوزيع: **السلسلةُ تطلب صنفَ المستند لا صنفَ الأمر وحده**.

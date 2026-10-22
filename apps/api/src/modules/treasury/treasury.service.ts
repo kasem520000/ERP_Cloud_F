@@ -338,6 +338,43 @@ export class TreasuryService implements OnModuleInit {
    * ولا مسيّر «مدفوع» بلا سند إن فشل الإدراج.
    */
   async createVoucherInTx(tx: DrizzleTx, tenantId: string, input: VoucherInput) {
+    /**
+     * R8-fix (DEF-R8-003) — الحقول الإلزامية تُفحص هنا فتُرجع 422 بحقلها بدل أن يصل
+     * `NOT NULL` إلى القاعدة فيتحوّل إلى 500 `INTERNAL` (قياس R8: سند بلا `subtype`).
+     */
+    const required: Array<[keyof VoucherInput, string]> = [
+      ['branchId', 'branchId'],
+      ['kind', 'kind'],
+      ['subtype', 'subtype'],
+      ['date', 'date'],
+      ['cashLocationId', 'cashLocationId'],
+      ['method', 'method'],
+    ];
+    for (const [field, label] of required) {
+      const value = input[field];
+      if (value === undefined || value === null || value === '')
+        throw new DomainError('VOUCHER_FIELD_REQUIRED', `Voucher field "${label}" is required`, 422, {
+          field: label,
+        });
+    }
+    /**
+     * R8-fix (DEF-R8-002) — إعادة الإرسال بنفس `idempotencyKey` كانت تصطدم بالفهرس
+     * الفريد `vouchers_tenant_idempotency_key` فتُرجع 500. الآن يُعاد المستند الأصلي
+     * كما هو (replay) فلا يتكرر السند ولا يرى المستخدم خطأ خادم عند النقر المزدوج.
+     * (سباقٌ حقيقي بين طلبين متزامنين يبقى محكوماً بالفهرس الفريد في القاعدة.)
+     */
+    if (input.idempotencyKey) {
+      const [replay] = await tx
+        .select()
+        .from(vouchers)
+        .where(
+          and(
+            eq(vouchers.tenantId, tenantId),
+            eq(vouchers.idempotencyKey, input.idempotencyKey),
+          ),
+        );
+      if (replay) return replay;
+    }
     const amount = money(input.amount);
     if (!amount.isFinite() || amount.lte(0))
       throw new DomainError('VOUCHER_AMOUNT_INVALID', 'Voucher amount must be positive', 422);
@@ -833,8 +870,22 @@ export class TreasuryService implements OnModuleInit {
   async voidVoucher(tenantId: string, id: string, reason: string) {
     if (!reason.trim()) throw new DomainError('VOUCHER_VOID_REASON_REQUIRED', 'Void reason is required', 422);
     const row = await this.getVoucher(tenantId, id);
-    if (row.status !== 'posted')
-      throw new DomainError('VOUCHER_INVALID_STATUS', 'Only posted vouchers can be voided', 409);
+    /**
+     * R8-fix (DEF-R8-008) — المسودة كانت لا تُلغى ولا تُحذف (لا `DELETE` في العقد)،
+     * فتبقى في القوائم أبداً. إلغاء مسودةٍ لا يلمس شيئاً مالياً — لا قيد لها ولا رصيد —
+     * فالسماح به يجعل «إلغاء» زراً صادقاً على كل حالة غير مُلغاة.
+     */
+    if (row.status !== 'posted' && row.status !== 'draft')
+      throw new DomainError('VOUCHER_INVALID_STATUS', 'Only draft or posted vouchers can be voided', 409);
+    if (row.status === 'draft') {
+      await withTenantTx(this.database.db, tenantId, async (tx) => {
+        await tx
+          .update(vouchers)
+          .set({ status: 'voided', voidedAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(vouchers.tenantId, tenantId), eq(vouchers.id, id)));
+      });
+      return this.getVoucher(tenantId, id);
+    }
     await withTenantTx(this.database.db, tenantId, async (tx) => {
       if (row.method !== 'cheque')
         await this.bumpBalance(
@@ -2347,28 +2398,110 @@ export class TreasuryService implements OnModuleInit {
     return text;
   }
 
-  getCashBalance(tenantId: string, cashLocationId: string, currency = 'SAR') {
-    return withTenantTx(
-      this.database.db,
+  /**
+   * R8-fix (DEF-R8-005 / DEF-R7-013) — **دفترٌ واحد للحقيقة**: رصيد موقع النقد يُقرأ من
+   * الأستاذ (مجموع مدين − دائن على حساب الموقع) لا من جدول `cash_location_balances`
+   * المخزّن. الجدول كان يُحدَّث من السندات والتحويلات فقط، فبقي نقدُ الفواتير النقدية
+   * والمرتجعات النقدية خارجَه: قياس R8 أعطى 75.00 مخزّناً مقابل 187.125 في الأستاذ.
+   * المخزّن يُعاد فقط للمقارنة، ولا يُبنى عليه قرار.
+   */
+  private async ledgerCashBalance(
+    tx: DrizzleTx,
+    tenantId: string,
+    cashLocationId: string,
+    currency: string,
+  ) {
+    const [location] = await tx
+      .select({ id: cashLocations.id, accountId: cashLocations.accountId, name: cashLocations.name })
+      .from(cashLocations)
+      .where(and(eq(cashLocations.tenantId, tenantId), eq(cashLocations.id, cashLocationId)));
+    if (!location) throw new DomainError('CASH_LOCATION_NOT_FOUND', 'Cash location was not found', 404);
+    if (!location.accountId)
+      throw new DomainError(
+        'CASH_LOCATION_WITHOUT_ACCOUNT',
+        'Cash location is not linked to a ledger account',
+        409,
+        { cashLocationId },
+      );
+    const [ledger] = await tx
+      .select({ net: sql<string>`COALESCE(SUM(${journalEntryLines.debit} - ${journalEntryLines.credit}), 0)::text` })
+      .from(journalEntryLines)
+      .innerJoin(journalEntries, eq(journalEntries.id, journalEntryLines.entryId))
+      .where(
+        and(
+          eq(journalEntryLines.tenantId, tenantId),
+          eq(journalEntryLines.accountId, location.accountId),
+          /**
+           * أسطر القيود التلقائية تُكتب بلا عملة (`currency_code IS NULL`) لأن عملة
+           * المنشأة واحدة؛ فمقارنتها بـ'SAR' كانت تُسقط كل الأسطر وتُرجع صفراً.
+           * السطر بلا عملة يُحسب بعملة الموقع.
+           */
+          or(eq(journalEntryLines.currencyCode, currency), isNull(journalEntryLines.currencyCode))!,
+          eq(journalEntries.status, 'posted'),
+        ),
+      );
+    const [stored] = await tx
+      .select({ balance: cashLocationBalances.balance })
+      .from(cashLocationBalances)
+      .where(
+        and(
+          eq(cashLocationBalances.tenantId, tenantId),
+          eq(cashLocationBalances.cashLocationId, cashLocationId),
+          eq(cashLocationBalances.currencyCode, currency),
+        ),
+      );
+    return {
       tenantId,
-      async (tx) =>
-        (
-          await tx
-            .select()
-            .from(cashLocationBalances)
-            .where(
-              and(
-                eq(cashLocationBalances.tenantId, tenantId),
-                eq(cashLocationBalances.cashLocationId, cashLocationId),
-                eq(cashLocationBalances.currencyCode, currency),
-              ),
-            )
-        )[0] ?? { tenantId, cashLocationId, currencyCode: currency, balance: '0' },
+      cashLocationId,
+      cashLocationName: location.name,
+      accountId: location.accountId,
+      currencyCode: currency,
+      balance: ledger?.net ?? '0',
+      storedBalance: stored?.balance ?? '0',
+      difference: money(ledger?.net ?? '0').minus(money(stored?.balance ?? '0')).toFixed(4),
+    };
+  }
+
+  async getCashBalance(tenantId: string, cashLocationId: string, currency = 'SAR') {
+    return withTenantTx(this.database.db, tenantId, (tx) =>
+      this.ledgerCashBalance(tx, tenantId, cashLocationId, currency),
     );
   }
+
+  /**
+   * R8-fix (DEF-R8-004) — «إعادة الحساب» كانت تعيد الرصيد المخزّن نفسه وتُعلن
+   * `reconciled: true`؛ أي أنها تُخفي الفرق الذي وُجدت لكشفه. الآن تُعيد حساب الأستاذ،
+   * تكتب المخزّن ليطابقه، وتُرجع الفرق قبل الكتابة: `reconciled` صحيحٌ فقط إذا كان صفراً.
+   */
   async recalcCashBalance(tenantId: string, cashLocationId: string, currency = 'SAR') {
-    const balance = await this.getCashBalance(tenantId, cashLocationId, currency);
-    return { ...balance, reconciled: true };
+    return withTenantTx(this.database.db, tenantId, async (tx) => {
+      const before = await this.ledgerCashBalance(tx, tenantId, cashLocationId, currency);
+      const differenceBefore = before.difference;
+      await tx
+        .insert(cashLocationBalances)
+        .values({
+          tenantId,
+          cashLocationId,
+          currencyCode: currency,
+          balance: before.balance,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [cashLocationBalances.cashLocationId, cashLocationBalances.currencyCode],
+          set: { balance: before.balance, updatedAt: new Date() },
+        });
+      return {
+        ...before,
+        /** الرصيد الذي كان مخزَّناً قبل إعادة الحساب، والفرق الذي كشفته. */
+        previousStoredBalance: before.storedBalance,
+        differenceBefore,
+        storedBalance: before.balance,
+        /** بعد المزامنة لم يبق فرق؛ و`reconciled` يصف **ما وجدته** الأداة لا ما كتبته. */
+        difference: '0.0000',
+        reconciled: money(differenceBefore).isZero(),
+        recalculatedAt: new Date().toISOString(),
+      };
+    });
   }
 
   private async bumpBalance(

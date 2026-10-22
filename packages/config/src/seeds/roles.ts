@@ -69,6 +69,14 @@ export const baselineRoles: readonly BaselineRoleSeed[] = [
       'sales.invoice.post',
       'sales.invoice.void',
       'sales.adjustment.create',
+      /**
+       * 🚐 DEF-R7-003 — المحاسبُ هو من يعتمد إغلاقَ عهدة المندوب وتسويةَ العجز (اعتمادٌ
+       * صريح، لأن سياسة الصلاحيات ترفض استنتاجه من `sales.*`). والقراءةُ معه ليست ترفاً:
+       * بلا `van_sales.view` لا تُفتح شاشةُ الاعتماد أصلاً. ولا يُمنح `load.manage` ولا
+       * `pricing.manage` — فيبقى الفصلُ بين من يُحمّل ويبيع ومن يعتمد.
+       */
+      'van_sales.view',
+      'van_sales.closing.approve',
       'purchase.view',
       'purchase.invoice.create',
       'supplier_portal.access',

@@ -1252,10 +1252,6 @@ const stockValueAt = (tenantId: string, f: ReportFilters): SQL => sql`(
     AND ${eqIf(sql`w.branch_id`, f.branchId)}
 )`;
 
-/** 🧾 الضريبة of a voucher — `Receipts.NetVal − Payment` in the window, `vat_amount` here. */
-const voucherVat = (alias: string): SQL => sql`sum(CASE
-    WHEN ${sql.raw(alias)}.vat_amount > 0 THEN ${sql.raw(alias)}.vat_amount
-    ELSE greatest(coalesce(${sql.raw(alias)}.net_amount, 0) - ${sql.raw(alias)}.amount, 0) END)`;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 💰 «تقارير الخزينة والرواتب والمستخدمين» — `frmRptKhzna` · `frmRptSalary` ·
@@ -1388,9 +1384,24 @@ const partyAccounts = (alias: SQL): SQL =>
  * chart never gave an account — a customer opened in a hurry, whose payments would
  * otherwise vanish from his own statement.
  */
+/**
+ * 🏦 حسابا المراقبة من ملفّ الترحيل — عندما لا يحمل الطرف حساباً خاصاً (وهو حال كل
+ * الأطراف التي تُنشأ من الشاشة اليوم). البديل القديم كان `jel.party_id = party.id`
+ * وحده، فجمع أسطر القيد الخمسة كلها: قيد البيع يحمل `party_id` على الذمم **والتكلفة
+ * والضريبة والمخزون** معاً، فصار مدين الكشف = دائنه = 281.88 ورصيد العميل صفراً
+ * (DEF-R7-006). الآن يُقيَّد البديل بحسابَي المراقبة أنفسهما من `branch_posting_profiles`:
+ * حساب الذمم المدينة و/أو الدائنة، فيبقى الكشف على أسطر الذمم فقط.
+ */
+const partyControlAccounts = sql`(
+            SELECT NULLIF(p.mapping->>'receivableAccountId', '')::uuid
+            FROM branch_posting_profiles p WHERE p.tenant_id = jel.tenant_id
+            UNION
+            SELECT NULLIF(p.mapping->>'payableAccountId', '')::uuid
+            FROM branch_posting_profiles p WHERE p.tenant_id = jel.tenant_id
+          )`;
 const partyMovement = (alias: SQL): SQL => sql`(
           CASE WHEN ${alias}.receivable_account_id IS NULL AND ${alias}.payable_account_id IS NULL
-               THEN jel.party_id = ${alias}.id
+               THEN jel.party_id = ${alias}.id AND jel.account_id IN ${partyControlAccounts}
                ELSE jel.account_id IN (${partyAccounts(alias)}) END)`;
 
 /** 🏷️ نوع الحساب — «عملاء» · «موردين» · «الكل», as `Customers.type` at the desktop. */
@@ -2937,19 +2948,26 @@ const definitions: ReportDefinition[] = [
     key: 'cash-movement',
     titleAr: 'حركة الصندوق',
     group: 'accounting',
-    hintAr: 'القبض والصرف المرحّل لكل صندوق أو بنك.',
+    hintAr: 'القبض والصرف المرحّل لكل صندوق أو بنك — من الأستاذ، لا من السندات وحدها.',
     params: [...PERIOD, BRANCH],
     columns: [text('location', 'الصندوق / البنك'), money('receipts', 'قبض'), money('payments', 'صرف'), money('net', 'الصافي')],
     totals: ['receipts', 'payments', 'net'],
+    /**
+     * R8-fix (DEF-R7-011) — كان التقرير يقرأ `vouchers` وحدها، فسقط منه نقد الفواتير
+     * النقدية والمرتجعات النقدية: 75.00 بدل 187.125 في R8، و0.00 بدل 261.63 في R7.
+     * الآن يُقرأ حساب كل موقع/بنك من `journal_entry_lines`: مدين = قبض، دائن = صرف،
+     * فيطابق مجموعُه كشفَ الصندوق حرفاً بحرف.
+     */
     build: (tenantId, f) => sql`
       SELECT coalesce(cl.name, '—') AS location,
-             sum(CASE WHEN v.kind = 'receipt' THEN v.amount ELSE 0 END)::text AS receipts,
-             sum(CASE WHEN v.kind = 'payment' THEN v.amount ELSE 0 END)::text AS payments,
-             sum(CASE WHEN v.kind = 'receipt' THEN v.amount ELSE -v.amount END)::text AS net
-      FROM vouchers v
-      LEFT JOIN cash_locations cl ON cl.id = v.cash_location_id
-      WHERE v.tenant_id = ${tenantId} AND v.status = 'posted'
-        AND ${onDate(sql`v.date`, f.from, f.to)} AND ${eqIf(sql`v.branch_id`, f.branchId)}
+             sum(jel.debit)::text AS receipts,
+             sum(jel.credit)::text AS payments,
+             sum(jel.debit - jel.credit)::text AS net
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON je.id = jel.entry_id
+      JOIN cash_locations cl ON cl.account_id = jel.account_id AND cl.tenant_id = jel.tenant_id
+      WHERE jel.tenant_id = ${tenantId} AND je.status = 'posted'
+        AND ${onDate(sql`je.date`, f.from, f.to)} AND ${eqIf(sql`je.branch_id`, f.branchId)}
       GROUP BY cl.name ORDER BY cl.name`,
   },
   {
@@ -3077,19 +3095,37 @@ const definitions: ReportDefinition[] = [
     key: 'ar-aging',
     titleAr: 'أعمار ديون العملاء',
     group: 'accounting',
-    hintAr: 'المتبقي على كل فاتورة مبيعات مرحّلة موزّعاً على شرائح العمر.',
+    hintAr: 'المتبقي على كل فاتورة مبيعات مرحّلة موزّعاً على شرائح العمر، ناقص التحصيلات غير المخصّصة.',
     params: [BRANCH],
     columns: [text('party', 'العميل'), money('bucket_0_30', '0-30 يوم'), money('bucket_31_60', '31-60'), money('bucket_61_90', '61-90'), money('bucket_90_plus', 'أكثر من 90'), money('due', 'الإجمالي')],
     totals: ['bucket_0_30', 'bucket_31_60', 'bucket_61_90', 'bucket_90_plus', 'due'],
+    /**
+     * R8-fix (DEF-R8-006) — التقرير كان يجمع `total − paid_total` من الفواتير وحدها،
+     * فسند قبضٍ على الحساب (بلا تخصيص لفاتورة) لا يُخصم منه: 186.875 مقابل 86.875 في
+     * الأستاذ. الآن يُخصم لكل عميل ما لم يُخصَّص من سندات القبض المرحّلة
+     * (`وamount − payment_allocations`) من الشريحة الأولى ومن الإجمالي، فيطابق
+     * مجموعُ الأعمار رصيد حساب الذمم في الميزان.
+     */
     build: (tenantId, f) => sql`
+      WITH unapplied AS (
+        SELECT v.party_id,
+               sum(v.amount) - coalesce(sum(a.amount), 0) AS amount
+        FROM vouchers v
+        LEFT JOIN payment_allocations a ON a.voucher_id = v.id AND a.tenant_id = v.tenant_id
+        WHERE v.tenant_id = ${tenantId} AND v.kind = 'receipt' AND v.status = 'posted'
+          AND v.party_id IS NOT NULL AND ${eqIf(sql`v.branch_id`, f.branchId)}
+        GROUP BY v.party_id
+      )
       SELECT ${partyName} AS party,
-             sum(CASE WHEN now() - si.posted_at <= interval '30 days' THEN si.total - si.paid_total ELSE 0 END)::text AS bucket_0_30,
+             (sum(CASE WHEN now() - si.posted_at <= interval '30 days' THEN si.total - si.paid_total ELSE 0 END)
+               - coalesce(max(u.amount), 0))::text AS bucket_0_30,
              sum(CASE WHEN now() - si.posted_at > interval '30 days' AND now() - si.posted_at <= interval '60 days' THEN si.total - si.paid_total ELSE 0 END)::text AS bucket_31_60,
              sum(CASE WHEN now() - si.posted_at > interval '60 days' AND now() - si.posted_at <= interval '90 days' THEN si.total - si.paid_total ELSE 0 END)::text AS bucket_61_90,
              sum(CASE WHEN now() - si.posted_at > interval '90 days' THEN si.total - si.paid_total ELSE 0 END)::text AS bucket_90_plus,
-             sum(si.total - si.paid_total)::text AS due
+             (sum(si.total - si.paid_total) - coalesce(max(u.amount), 0))::text AS due
       FROM sales_invoices si
       LEFT JOIN parties party ON party.id = si.party_id
+      LEFT JOIN unapplied u ON u.party_id = si.party_id
       WHERE si.tenant_id = ${tenantId} AND si.kind = 'sale' AND si.status = 'posted'
         AND si.total > si.paid_total AND ${eqIf(sql`si.branch_id`, f.branchId)}
       GROUP BY party.name ORDER BY sum(si.total - si.paid_total) DESC`,
@@ -4332,8 +4368,18 @@ const definitions: ReportDefinition[] = [
     grandTotal: [{ key: 's_net_vat', labelAr: 'صافي ضريبة القيمة المضافة' }],
     emptyAr: 'لا توجد بيانات ضريبية في هذه الفترة',
     signature: true,
+    /**
+     * R8-fix (DEF-R8-007) — بنود «سندات القبض/الصرف» كانت تدخل الوعاء بكامل مبلغ
+     * السند: في R8 صار «صافي المبيعات» 360.00 (260 مبيعات + 100 سند قبض) و«صافي
+     * المشتريات» 785.00 (760 + 25 سند صرف كهرباء) — أي أن تحصيلاً وتشغيلاً عاديّين
+     * يُقدَّمان للهيئة كرقم أعمال. السند لا يدخل الوعاء إلا إذا كان حاملاً لضريبة،
+     * وإلا فهو حركة نقدية لا بيعٌ ولا شراء.
+     */
     build: (tenantId, f) => {
       const range = taxPeriodRange(f);
+      /** ضريبة السند **لسطرٍ واحد** (بلا `sum`) — تُستخدم داخل `FILTER`، و`voucherVat` تجميعٌ فلا تُوضع داخل تجميع. */
+      const rowVoucherVat = sql`CASE WHEN vr.vat_amount > 0 THEN vr.vat_amount
+        ELSE greatest(coalesce(vr.net_amount, 0) - vr.amount, 0) END`;
       const period = onDate(sql`je.date`, range.from, range.to);
       const date = (column: SQL) => onDate(column, range.from, range.to);
       return sql`
@@ -4370,10 +4416,10 @@ const definitions: ReportDefinition[] = [
           FROM rental_invoices ri
           WHERE ri.tenant_id = ${tenantId} AND ri.status = 'posted' AND ${date(sql`ri.document_date`)}
         ), v AS (
-          SELECT coalesce(sum(vr.amount) FILTER (WHERE vr.kind = 'receipt'), 0) AS receipts_net,
-                 coalesce(${voucherVat('vr')} FILTER (WHERE vr.kind = 'receipt'), 0) AS receipts_vat,
-                 coalesce(sum(vr.amount) FILTER (WHERE vr.kind = 'payment'), 0) AS payments_net,
-                 coalesce(${voucherVat('vr')} FILTER (WHERE vr.kind = 'payment'), 0) AS payments_vat
+          SELECT coalesce(sum(vr.amount) FILTER (WHERE vr.kind = 'receipt' AND (${rowVoucherVat}) <> 0), 0) AS receipts_net,
+                 coalesce(sum(${rowVoucherVat}) FILTER (WHERE vr.kind = 'receipt'), 0) AS receipts_vat,
+                 coalesce(sum(vr.amount) FILTER (WHERE vr.kind = 'payment' AND (${rowVoucherVat}) <> 0), 0) AS payments_net,
+                 coalesce(sum(${rowVoucherVat}) FILTER (WHERE vr.kind = 'payment'), 0) AS payments_vat
           FROM vouchers vr
           WHERE vr.tenant_id = ${tenantId} AND vr.status = 'posted' AND ${date(sql`vr.date`)}
             AND ${eqIf(sql`vr.branch_id`, f.branchId)}
@@ -4454,8 +4500,15 @@ const definitions: ReportDefinition[] = [
     build: (tenantId, f) => {
       const fromTime = f.fromTime || '00:00';
       const toTime = f.toTime || '23:59';
-      const box = sql`(SELECT cl.account_id FROM cash_locations cl
-                       WHERE cl.id = ${f.cashLocationId ?? null}::uuid AND cl.tenant_id = ${tenantId})`;
+      /**
+       * R8-fix (DEF-R7-011) — بلا `cashLocationId` كان الشرط `jel.account_id = NULL`
+       * فلا يُرجع التقرير سطراً واحداً (0.00) بينما الحركة على الصناديق قائمة.
+       * الاختيار «الكل» يعني كل حسابات مواقع النقد في المنشأة.
+       */
+      const box = f.cashLocationId
+        ? sql`(SELECT cl.account_id FROM cash_locations cl
+                 WHERE cl.id = ${f.cashLocationId}::uuid AND cl.tenant_id = ${tenantId})`
+        : sql`(SELECT cl.account_id FROM cash_locations cl WHERE cl.tenant_id = ${tenantId})`;
       const opening = Boolean(f.from);
       return sql`
         WITH prior AS (
@@ -4463,7 +4516,7 @@ const definitions: ReportDefinition[] = [
           FROM journal_entry_lines jel
           JOIN journal_entries je ON je.id = jel.entry_id
           LEFT JOIN vouchers v ON v.id = je.source_id AND je.source_type = 'voucher'
-          WHERE jel.tenant_id = ${tenantId} AND je.status = 'posted' AND jel.account_id = ${box}
+          WHERE jel.tenant_id = ${tenantId} AND je.status = 'posted' AND jel.account_id IN ${box}
             AND ${f.from ? sql`je.date < ${f.from}::date
                  OR (je.date = ${f.from}::date AND coalesce(v.voucher_time, '00:00') < ${fromTime}::time)` : sql`false`}
         ), movements AS (
@@ -4473,7 +4526,7 @@ const definitions: ReportDefinition[] = [
           FROM journal_entry_lines jel
           JOIN journal_entries je ON je.id = jel.entry_id
           LEFT JOIN vouchers v ON v.id = je.source_id AND je.source_type = 'voucher'
-          WHERE jel.tenant_id = ${tenantId} AND je.status = 'posted' AND jel.account_id = ${box}
+          WHERE jel.tenant_id = ${tenantId} AND je.status = 'posted' AND jel.account_id IN ${box}
             AND ${onDate(sql`je.date`, f.from, f.to)}
             AND coalesce(v.voucher_time, '00:00') BETWEEN ${fromTime}::time AND ${toTime}::time
           GROUP BY je.id, je.date, je.number, je.description

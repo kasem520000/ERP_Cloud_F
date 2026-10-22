@@ -512,6 +512,8 @@ describe('Van Sales end-to-end acceptance on official stock & accounting ledgers
       'documentNumber',
       'invoiceNumber',
       'invoiceStatus',
+      // ‏🧾 حالةُ الامتثال (DEF-R7-007) — الورقةُ تقول ما تحقّق لدى الهيئة، لا ما يوحي به الاسم.
+      'zatcaCompliance',
       'saleDate',
       'companyName',
       'companyNameEn',
@@ -552,6 +554,8 @@ describe('Van Sales end-to-end acceptance on official stock & accounting ledgers
       'documentNumber',
       'invoiceNumber',
       'invoiceStatus',
+      // ‏🧾 الحالةُ تُطبع على كلّ نسخة (النسخُ مبنيّةٌ على القاعدة نفسها) — DEF-R7-007.
+      'zatcaCompliance',
       'saleDate',
       'companyName',
       'companyNameEn',

@@ -10,7 +10,12 @@ import { api } from './http.js';
 import { createTestApp, type TestApp } from './test-app.js';
 
 const SELLER_NAME = 'مخابز الرقم الحقيقي';
-const SELLER_VAT = '310000000000015';
+/**
+ * رقمٌ **مُطابقٌ للصيغة** (١٥ خانةً تبدأ وتنتهي بـ٣ — BR-KSA-44)، وهو رقمُ اختبارٍ
+ * مُصطنعٌ لا رقمُ منشأةٍ حقيقية: الاختبار يقيس أنّ الرقمَ المكتوبَ في ملفّ المنشأة هو
+ * الذي يبلغ رمزَ الفاتورة، لا أنّ الرقمَ مُسجَّلٌ لدى الهيئة (ذاك يحتاج تكاملًا حيًّا).
+ */
+const SELLER_VAT = '310000000000013';
 /** البديلان المفبركان اللذان كان المشفِّرُ الخاصّ يكتبهما في حمولة كلّ فاتورة. */
 const FABRICATED_NAME = 'مصنع ومخابز التوزيع';
 const FABRICATED_VAT = '300000000000003';
@@ -366,6 +371,48 @@ describe('a ZATCA van document carries the tenant’s real seller identity, or i
     expect(rows?.unit_cost).toBe('4.0000');
   });
 
+  /**
+   * 🧾 **رقمٌ موجودٌ لكنه ليس رقمًا** — DEF-R7-007، الفجوةُ التي قِيست في R7.
+   *
+   * الحارسُ القديم كان يسأل «هل الحقلُ فارغ؟» فقط، فمرّ
+   * `AUDIT-NOT-A-VALID-TAX-NUMBER` وأُصدرت به «فاتورةٌ ضريبية»: رقمٌ لا يُطابق صيغةَ
+   * الهيئة (١٥ رقمًا تبدأ وتنتهي بـ٣) ولا يُسجَّل في أيّ نظام، ويحتلّ خانةً في رمز QR
+   * يقرأه مفتّش. والآن الصيغةُ تُفحص بالمُحقِّق الرسميّ نفسه (`isValidSellerVat`)، والرفضُ
+   * يميّز «غير مُدخل» من «لا يطابق الصيغة» — فالمحاسبُ يعرف ما يُصلح.
+   *
+   * والحدُّ يُقال صريحًا: هذا فحصُ **صيغةٍ** لا تحقّقٌ من تسجيلٍ فعليٍّ لدى الهيئة (ذاك
+   * يحتاج تكاملًا حيًّا بشهادة CSID ورقمًا حقيقيًّا) — فلا يُدّعى أكثر مما قِيس.
+   */
+  it('رقمٌ لا يطابق صيغة الهيئة: رفضٌ ٤٢٢ يسمّي الحقل، ولا كتابةَ خلفه', async () => {
+    await setTaxNo('AUDIT-NOT-A-VALID-TAX-NUMBER');
+    const before = await counts();
+
+    const refused = await createDocument({
+      invoiceMode: 'zatca_tax',
+      paymentMethod: 'credit',
+      soldQty: '1',
+      unitPrice: '10',
+      idempotencyKey: 'zatca-seller-malformed',
+    });
+    expect(refused.status, JSON.stringify(refused.body).slice(0, 600)).toBe(422);
+    expect(refused.body.code).toBe('VAN_ZATCA_SELLER_IDENTITY_REQUIRED');
+    expect(refused.body.detail).toContain('الرقم الضريبي');
+    // ‏الجملةُ تسمّي الصيغة المطلوبة — لا «الحقل مطلوب» فقط.
+    expect(refused.body.detail).toContain('١٥');
+    expect(refused.body.errors?.[0]?.field).toBe('taxNo');
+    expect(await counts()).toEqual(before);
+
+    // ‏وشاشةُ السياسة تُميّز النوعين: الرقمُ مُدخلٌ (`missingFields` فارغة) لكنه باطل.
+    const policy = await api(ctx.server, 'get', '/api/v1/van-sales/policy', { token: rep.token });
+    const seller = (policy.body.data as {
+      zatcaSeller: { ready: boolean; missingFields: string[]; invalidFields: string[]; refusalDetail: string | null };
+    }).zatcaSeller;
+    expect(seller.ready).toBe(false);
+    expect(seller.missingFields).toEqual([]);
+    expect(seller.invalidFields).toEqual(['الرقم الضريبي']);
+    expect(seller.refusalDetail).toBe(refused.body.detail);
+  });
+
   it('الرفضُ حالةٌ لا حكمٌ دائم: يعود الرقمُ فتعود الفاتورةُ بهويّتها', async () => {
     await setTaxNo(SELLER_VAT);
 
@@ -373,10 +420,11 @@ describe('a ZATCA van document carries the tenant’s real seller identity, or i
       token: rep.token,
     });
     const seller = (policy.body.data as {
-      zatcaSeller: { ready: boolean; missingFields: string[]; refusalDetail: string | null };
+      zatcaSeller: { ready: boolean; missingFields: string[]; invalidFields: string[]; refusalDetail: string | null };
     }).zatcaSeller;
     expect(seller.ready).toBe(true);
     expect(seller.missingFields).toEqual([]);
+    expect(seller.invalidFields).toEqual([]);
     expect(seller.refusalDetail).toBeNull();
 
     const created = await createDocument({
@@ -393,5 +441,45 @@ describe('a ZATCA van document carries the tenant’s real seller identity, or i
     const tags = await qrOf(newest!.id);
     expect(tags?.[1]).toBe(SELLER_NAME);
     expect(tags?.[2]).toBe(SELLER_VAT);
+
+    /**
+     * 🧾 **والحالةُ الصادقة** — DEF-R7-007، الشقُّ الذي كان يعد بما لم يُنفَّذ: المستندُ
+     * يُنشئ فاتورةً رسميةً مرحّلة، لكن إرسالَها إلى «فاتورة» مسارٌ آخر. فما دام لم يُرسل
+     * فلا بدّ أن يُقال: `zatca_status = 'qr_only'` بلا UUID، و`zatcaCompliance.phase =
+     * 'phase1_qr'` في كلّ سطح يقرأ المستند (قائمة، مساحة المندوب، نسخة الطباعة).
+     */
+    const invoice = await withTenantTx(ctx.handle.db, owner.tenantId, async (tx) => {
+      const result = await tx.execute(sql`
+        SELECT si.zatca_status, si.zatca_uuid::text AS zatca_uuid
+        FROM van_sales_documents d
+        JOIN sales_invoices si ON si.id = d.sales_invoice_id
+        WHERE d.tenant_id = ${owner.tenantId}::uuid AND d.id = ${newest!.id}::uuid
+      `);
+      return (result as { rows: Array<Record<string, string | null>> }).rows[0];
+    });
+    expect(invoice?.zatca_status).toBe('qr_only');
+    expect(invoice?.zatca_uuid).toBeNull();
+
+    const compliance = (newest as unknown as {
+      zatcaCompliance: { phase: string; submitted: boolean; noteAr: string };
+    }).zatcaCompliance;
+    expect(compliance.phase).toBe('phase1_qr');
+    expect(compliance.submitted).toBe(false);
+    expect(compliance.noteAr).toContain('لم تُرسل');
+
+    // ‏ونسخةُ الطباعة تقول الشيء نفسه — الورقةُ لا تدّعي إرسالًا.
+    const printView = await api(
+      ctx.server,
+      'get',
+      `/api/v1/van-sales/documents/${newest!.id}/print-view?copies=1`,
+      { token: rep.token },
+    );
+    expect(printView.status, JSON.stringify(printView.body).slice(0, 300)).toBe(200);
+    const printed = (printView.body.data as {
+      zatcaCompliance: { phase: string; submitted: boolean };
+      invoiceStatus: string | null;
+    }).zatcaCompliance;
+    expect(printed.phase).toBe('phase1_qr');
+    expect(printed.submitted).toBe(false);
   });
 });

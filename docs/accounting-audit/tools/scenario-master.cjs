@@ -1,0 +1,8 @@
+// Historical run script. Do not rerun on populated audit DB; use a new isolated fixture.
+const {open,before,snap,goto,evidence}=require('./browser.cjs');const fs=require('fs');
+(async()=>{const {b,p}=await open();for(const test of [
+ {id:'MD-001',url:'/inventory/categories',button:'مجموعة جديدة',data:{'الرمز':'AUDIT-TEST-2026-CAT','الاسم العربي':'AUDIT-TEST-2026 مجموعة رئيسية','الاسم الإنجليزي':'Audit root category'}},
+ {id:'MD-002',url:'/inventory/units',button:'وحدة جديدة',data:{'الرمز':'AUDIT-PCS','الاسم العربي':'AUDIT-TEST-2026 حبة','الاسم الإنجليزي':'Audit piece'}},
+ {id:'MD-003',url:'/purchases/suppliers',button:'مورد جديد',data:{'الرمز':'AUDIT-SUP-001','الاسم':'AUDIT-TEST-2026 مورد'}},
+ {id:'MD-004',url:'/sales/customers',button:'عميل جديد',data:{'الرمز':'AUDIT-CUS-001','الاسم':'AUDIT-TEST-2026 عميل','سقف الائتمان':'2000'}},
+]){await goto(p,test.url);await p.getByRole('button',{name:test.button,exact:true}).click();for(const [label,value]of Object.entries(test.data))await p.getByLabel(new RegExp("^"+label+"(?: \\*)?$")).fill(value);await before(p,'01-master-data/'+test.id);const resPromise=p.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/api/v1/'));await p.getByRole('button',{name:'حفظ',exact:true}).click();const res=await resPromise;const result=await res.json();fs.writeFileSync(evidence+'/01-master-data/'+test.id+'-response.json',JSON.stringify({at:new Date().toISOString(),status:res.status(),result},null,2));await p.waitForTimeout(1000);await snap(p,'01-master-data/'+test.id+'-after-save','after-save');console.log(test.id,res.status(),(await p.locator('body').innerText()).slice(-550));if(!res.ok())break;}await b.close()})().catch(e=>{console.error(e);process.exit(1)});

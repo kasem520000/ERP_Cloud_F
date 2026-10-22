@@ -241,6 +241,17 @@ type VanDocument = {
   /** رقم وحالة الفاتورة الرسمية في `sales_invoices`. */
   invoiceNumber?: string | null;
   invoiceStatus?: string | null;
+  /**
+   * 🧾 حالةُ الامتثال الحقيقية كما يقرأها الخادم من الفاتورة الرسمية (DEF-R7-007):
+   * `phase1_qr` = رمز QR فقط ولم تُرسل للهيئة، `phase2_submitted` = لها UUID/توقيع.
+   */
+  zatcaCompliance?: {
+    phase: 'none' | 'phase1_qr' | 'phase2_submitted';
+    submitted: boolean;
+    status: string | null;
+    uuid: string | null;
+    noteAr: string;
+  };
   productionBatchNo: string;
   loadOrderId: string | null;
   salesmanId: string | null;
@@ -345,6 +356,8 @@ type DashboardData = {
     zatcaSeller?: {
       ready: boolean;
       missingFields: string[];
+      /** حقولٌ مُدخلةٌ لكنها لا تطابق صيغة الهيئة (BR-KSA-44) — DEF-R7-007/م2. */
+      invalidFields: string[];
       refusalDetail: string | null;
     } | null;
   };
@@ -853,7 +866,9 @@ export default function VanSalesPage() {
         branchName: `دفعة إنتاج: ${view.productionBatchNo}`,
         invoiceNumber: view.invoiceNumber ?? view.documentNumber,
         invoiceTypeLabel:
-          view.invoiceMode === 'zatca_tax' ? 'فاتورة ضريبية مبسطة (ZATCA)' : 'إيصال تسليم بضاعة (توزيع)',
+          view.invoiceMode === 'zatca_tax'
+            ? 'فاتورة ضريبية مبسطة (QR — المرحلة الأولى)'
+            : 'إيصال تسليم بضاعة (توزيع)',
         issuedAt: view.saleDate,
         customerName: view.customerName,
         cashierName: view.salesmanName,
@@ -1028,7 +1043,11 @@ export default function VanSalesPage() {
       setSelectedDoc(newestDoc);
       setNotice({
         kind: 'ok',
-        text: `تم إصدار ${newestDoc?.invoiceMode === 'zatca_tax' ? 'فاتورة ضريبية إلكترونية (ZATCA)' : 'فاتورة توزيع عادية محفوظة محاسبياً'} رقم ${newestDoc?.number ?? ''} وخصم الكمية من عهدة المندوب.`,
+        text: `تم إصدار ${
+          newestDoc?.invoiceMode === 'zatca_tax'
+            ? 'فاتورة ضريبية برمز QR للمرحلة الأولى — لم تُرسل إلى هيئة الزكاة بعد (الإرسال من الإعدادات ← ZATCA ← مزامنة الفواتير)'
+            : 'فاتورة توزيع عادية محفوظة محاسبياً'
+        } رقم ${newestDoc?.number ?? ''} وخصم الكمية من عهدة المندوب.`,
       });
     } catch (error) {
       setNotice({ kind: 'danger', text: apiErrorText(error, 'تعذر إصدار المستند') });
@@ -2895,13 +2914,16 @@ export default function VanSalesPage() {
                       onChange={(e) => setClosingSalaryDeduction(e.target.checked)}
                     />
                     <span>
-                      إقرار بمراجعة العجز ({modalShortageKg.toFixed(2)} كجم ≈ {modalShortageSar.toFixed(2)}{' '}
-                      ريال) وسببه، وتصفير رصيد عهدة المندوب إلى (0.00 كجم).
+                      خصمُ العجز ({modalShortageKg.toFixed(2)} كجم ≈ {modalShortageSar.toFixed(2)} ريال) من
+                      مستحقات المندوب — ذمّةً عليه.
                       <br />
                       <span className="muted small">
-                        لا يُنشئ هذا الإقرار أي قيد على راتب المندوب أو ذمته: المعالجة المالية للعجز (أساس
-                        التقييم والحساب المقابل) معلّقة حتى تعتمد السياسة من الإعدادات، ويُكتفى بتسجيل الحالة
-                        «بانتظار اعتماد السياسة».
+                        {/* DEF-R7-002 — النصّ كان يقول «لا يُنشئ أي قيد» والعلمُ يُرحّل قيداً. */}
+                        تعليمُ المربّع يُرحّل قيداً: Dr حساب الموظف / Cr حساب تسوية العجز بمبلغ العجز
+                        أعلاه، فيصير ديناً على المندوب يُخصم من مستحقاته. وإن لم يكن حساب الموظف أو الحساب
+                        المقابل مضبوطاً رُفض الاعتماد برسالةٍ تسمّي الناقص (422
+                        `VAN_SHORTAGE_EMPLOYEE_ACCOUNT_REQUIRED`). وبلا تعليمٍ لا يُرحَّل مالٌ على المندوب،
+                        ويُسجَّل العجز بحالة «بانتظار اعتماد السياسة».
                       </span>
                     </span>
                   </label>
@@ -3041,9 +3063,25 @@ export default function VanSalesPage() {
                  * يُصدر، لا بعد أن يُرفض — والجملةُ من الحمولة فلا نسخةَ ثانيةَ منها هنا.
                  */}
                 {data?.policy?.zatcaSeller && data.policy.zatcaSeller.ready === false ? (
-                  <p className="muted small" style={{ margin: 0, color: 'var(--danger)' }}>
-                    {data.policy.zatcaSeller.refusalDetail}
-                  </p>
+                  <div style={{ margin: 0, color: 'var(--danger)' }} className="small">
+                    <div>{data.policy.zatcaSeller.refusalDetail}</div>
+                    {/**
+                     * 🧾 **ماذا يُصلح بالضبط** — التفريقُ بين «غير مُدخل» و«لا يطابق الصيغة»
+                     * هو ما يجعل الرسالة قابلةً للتنفيذ: الأولى تعني «أدخل الرقم في بيانات
+                     * المنشأة»، والثانية تعني «الرقم المُدخل ليس رقمًا ضريبيًّا صالحًا».
+                     */}
+                    {data.policy.zatcaSeller.missingFields.length > 0 ? (
+                      <div>
+                        الناقص في بيانات المنشأة: {data.policy.zatcaSeller.missingFields.join(' · ')}
+                      </div>
+                    ) : null}
+                    {data.policy.zatcaSeller.invalidFields.length > 0 ? (
+                      <div>
+                        لا يطابق صيغة الهيئة (١٥ رقمًا تبدأ وتنتهي بـ٣):{' '}
+                        {data.policy.zatcaSeller.invalidFields.join(' · ')}
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
 
                 <div className="form-grid">
@@ -3102,7 +3140,7 @@ export default function VanSalesPage() {
                       value={docMode}
                       onChange={(e) => setDocMode(e.target.value as 'zatca_tax' | 'internal_delivery')}
                     >
-                      <option value="zatca_tax">فاتورة ضريبية إلكترونية ZATCA (15% VAT + QR)</option>
+                      <option value="zatca_tax">فاتورة ضريبية ZATCA (15% VAT + QR — المرحلة الأولى)</option>
                       <option value="internal_delivery">
                         فاتورة توزيع عادية (لمحل لا يطلب ضريبية ورقية)
                       </option>
@@ -3397,6 +3435,21 @@ export default function VanSalesPage() {
                   <div style={{ display: 'grid', placeItems: 'center', marginTop: 6 }}>
                     <ZatcaQrSvg size={128} payload={selectedDoc.qrPayload ?? ''} />
                   </div>
+                  {/**
+                   * 🧾 **الحالة الصادقة بجانب الرمز** (DEF-R7-007): الرمزُ وحده لا يعني أن
+                   * الفاتورة بلغت الهيئة. فما دامت `phase1_qr` تقول الشاشة ذلك صريحًا،
+                   * وما دامت للإرسال شاشةٌ أخرى فيُشار إليها — لا كلمة «إلكترونية» بلا سند.
+                   */}
+                  {selectedDoc.zatcaCompliance?.phase === 'phase1_qr' ? (
+                    <div className="muted small" style={{ textAlign: 'center', lineHeight: 1.7 }}>
+                      {selectedDoc.zatcaCompliance.noteAr}
+                    </div>
+                  ) : null}
+                  {selectedDoc.zatcaCompliance?.phase === 'phase2_submitted' ? (
+                    <div className="small" style={{ textAlign: 'center', color: 'var(--ok)' }}>
+                      مُرسلة إلكترونيًّا — الحالة: {selectedDoc.zatcaCompliance.status ?? '—'}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <p className="muted">اختر فاتورة أو أصدر فاتورة جديدة لمعاينتها وطباعتها.</p>
@@ -3563,7 +3616,7 @@ export default function VanSalesPage() {
                       setTierPreferredMode(e.target.value as 'zatca_tax' | 'internal_delivery')
                     }
                   >
-                    <option value="zatca_tax">فاتورة ضريبية إلكترونية ZATCA</option>
+                    <option value="zatca_tax">فاتورة ضريبية ZATCA (QR — المرحلة الأولى)</option>
                     <option value="internal_delivery">فاتورة توزيع عادية (بدون ضريبية ورقية)</option>
                   </select>
                 </label>

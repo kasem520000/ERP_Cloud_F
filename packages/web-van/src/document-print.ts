@@ -36,6 +36,17 @@ export type VanDocumentPrintView = {
   documentNumber: string;
   invoiceNumber: string | null;
   invoiceStatus: string | null;
+  /**
+   * 🧾 حالةُ الامتثال (DEF-R7-007): رمزُ QR للمرحلة الأولى ≠ إرسالٌ إلى الهيئة.
+   * وجودُها في نسخة الطباعة مقصود: ورقةٌ تخرج من المنشأة يجب أن تقول ما تحقّق فعلًا.
+   */
+  zatcaCompliance?: {
+    phase: 'none' | 'phase1_qr' | 'phase2_submitted';
+    submitted: boolean;
+    status: string | null;
+    uuid: string | null;
+    noteAr: string;
+  };
   saleDate: string;
   companyName: string;
   companyNameEn: string;
@@ -140,7 +151,7 @@ export function buildVanDocumentPrintHtml(view: VanDocumentPrintView): string {
       </div>
       <div class="doc">
         <div class="copy-label">${escapeHtml(copy.copyLabel)}</div>
-        <h2>${view.invoiceMode === 'zatca_tax' ? 'فاتورة ضريبية إلكترونية (مبيعات توزيع)' : 'إشعار تسليم / فاتورة توزيع داخلية'}</h2>
+        <h2>${view.invoiceMode === 'zatca_tax' ? 'فاتورة ضريبية مبسطة (مبيعات توزيع — رمز QR للمرحلة الأولى)' : 'إشعار تسليم / فاتورة توزيع داخلية'}</h2>
         <table class="kv">
           <tr><td>رقم المستند</td><th dir="ltr">${escapeHtml(view.documentNumber)}</th></tr>
           ${view.invoiceNumber ? `<tr><td>رقم الفاتورة الرسمية</td><th dir="ltr">${escapeHtml(view.invoiceNumber)}</th></tr>` : ''}
@@ -212,7 +223,16 @@ export function buildVanDocumentPrintHtml(view: VanDocumentPrintView): string {
     }
     ${view.notes ? `<div class="notes">ملاحظات: ${escapeHtml(view.notes)}</div>` : ''}
     <footer class="muted small">
-      ${view.invoiceMode === 'zatca_tax' ? 'مستند ضريبي إلكتروني — الحالة: ' + escapeHtml(view.invoiceStatus || '—') : 'حالة السياسة الضريبية: ' + escapeHtml(view.taxPolicyStatus)}
+      ${
+        view.invoiceMode === 'zatca_tax'
+          ? escapeHtml(
+              view.zatcaCompliance?.submitted
+                ? 'فاتورة ضريبية مُرسلة إلكترونيًّا — الحالة: ' + (view.zatcaCompliance.status || '—')
+                : 'فاتورة ضريبية برمز QR للمرحلة الأولى — لم تُرسل إلى هيئة الزكاة بعد' +
+                    (view.invoiceNumber ? ' (الفاتورة الرسمية ' + view.invoiceNumber + ')' : ''),
+            )
+          : 'حالة السياسة الضريبية: ' + escapeHtml(view.taxPolicyStatus)
+      }
     </footer>
   </section>`;
 

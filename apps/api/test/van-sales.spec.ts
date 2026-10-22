@@ -539,7 +539,14 @@ describe('Factory, Bakery & Van Sales 10-pillar workflow & 6-Phase Core Integrat
     ).loadOrders.find((l) => l.id === loadOrderId)!;
     expect(pendingOrder.status).toBe('pending_closing');
     expect(Number(pendingOrder.shortageQty)).toBe(5);
-    expect(Number(pendingOrder.shortageValue)).toBe(32.5);
+    /**
+     * ⚖️ DEF-R7-009 — ‏5 كجم × **التكلفة** 3.80 = 19.00، لا 32.50 (5 × سعر بيع 6.50).
+     *
+     * كان الأساسُ غير المضبوط (`unconfigured`) يسلك سلسلة سعر البيع، فيُكتب على الأمر رقمٌ
+     * يخالف قيدَ الشطب في الدفاتر (19.00) بفرق 13.50 بلا سند. وهذا الاختبار كان يثبّت الرقم
+     * الخطأ (32.5) — فحُدِّث مع الإصلاح، لا أُرخي.
+     */
+    expect(Number(pendingOrder.shortageValue)).toBe(19);
 
     // 9. Phase 4 RBAC & Segregation of Duties: Rep cannot call approve-closing (403 Forbidden)
     const repApproveDenied = await api(
